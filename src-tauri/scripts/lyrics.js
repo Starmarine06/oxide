@@ -1,4 +1,4 @@
-// Synced lyrics panel. Lyrics come from Rust (`lyrics_get`, LRCLIB).
+// Synced lyrics panel. Lyrics come from Rust (`lyrics_get`: LRCLIB, YouTube Music).
 // Toggle with the player-bar button or Plugins > Synced lyrics > Show / hide (Ctrl+L).
 pear.plugin('synced-lyrics', {
   start(ctx, config) {
@@ -17,6 +17,8 @@ pear.plugin('synced-lyrics', {
     let requestId = 0;
     let userScrollUntil = 0; // auto-scroll pauses while the user scrolls
     let raf = 0;
+    let songId = null;
+    let shift = 0;           // seconds to delay the timing by (see lead-in below)
 
     ctx.style(`
       .oxl { position: fixed; z-index: 1000; right: 12px; width: var(--oxl-w, min(440px, 42vw));
@@ -197,7 +199,7 @@ pear.plugin('synced-lyrics', {
       for (const raw of lrc.split(/\r?\n/)) {
         const stamps = [...raw.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];
         if (!stamps.length) continue;
-        const text = raw.replace(/\[[^\]]*\]/g, '').trim();
+        const text = raw.replace(/\[[^\]]*\]/g, '').replace(/<\d+:\d+(?:\.\d+)?>/g, '').replace(/\s+/g, ' ').trim();
         for (const m of stamps) out.push({ time: Number(m[1]) * 60 + Number(m[2]), text });
       }
       out.sort((a, b) => a.time - b.time);
@@ -228,6 +230,8 @@ pear.plugin('synced-lyrics', {
 
     function render(result) {
       currentIndex = -1;
+      // The lead-in report can land before or after the lyrics; keep whichever knows the shift.
+      shift = Math.max(shift, (result && Number(result.shift)) || 0);
       if (result && result.synced) {
         lines = parseLrc(result.synced);
         body.replaceChildren(...lines.map((line) => {
@@ -252,22 +256,22 @@ pear.plugin('synced-lyrics', {
             }
           }
           line.node.addEventListener('click', () => {
-            pear.command('seek', Math.max(0, line.time - offset() / 1000));
+            pear.command('seek', Math.max(0, line.time - offset() / 1000 + shift));
             userScrollUntil = 0;
           });
           return line.node;
         }));
-        source.textContent = 'Synced lyrics · LRCLIB';
+        source.textContent = (result.estimated ? 'Approximate timing · ' : 'Synced lyrics · ') + result.source;
         tick();
       } else if (result && result.plain) {
         lines = [];
         body.replaceChildren(pear.el('div', { class: 'oxl-plain', text: result.plain }));
-        source.textContent = 'Lyrics · LRCLIB (not time-synced)';
+        source.textContent = 'Lyrics · ' + result.source + ' (not time-synced)';
       } else if (result && result.instrumental) {
         empty('Instrumental', 'Just listen.', NOTE);
         source.textContent = '';
       } else {
-        empty('No lyrics for this song', 'LRCLIB doesn’t have lyrics for it yet.', NOTE);
+        empty('No lyrics for this song', 'LRCLIB and YouTube Music don’t have lyrics for it yet.', NOTE);
         source.textContent = '';
       }
     }
@@ -280,10 +284,12 @@ pear.plugin('synced-lyrics', {
         bg.style.backgroundImage = `url("${song.artUrl.replace(/"/g, '%22')}")`;
       }
       const id = ++requestId;
+      songId = song.videoId;
+      shift = 0;
       loading();
       source.textContent = 'Searching…';
       try {
-        const result = await pear.invoke('lyrics_get', { title: song.title, artist: song.artist, album: song.album, duration: song.duration });
+        const result = await pear.invoke('lyrics_get', { title: song.title, artist: song.artist, album: song.album, duration: song.duration, videoId: song.videoId });
         if (id === requestId) render(result);
       } catch (e) {
         if (id === requestId) { empty('Couldn’t load lyrics', String(e)); source.textContent = ''; }
@@ -303,7 +309,7 @@ pear.plugin('synced-lyrics', {
     function tick() {
       const v = pear.video;
       if (!v || !lines.length) return;
-      const t = v.currentTime + offset() / 1000;
+      const t = pear.position() + offset() / 1000 - shift;
       let idx = -1;
       for (let i = 0; i < lines.length && lines[i].time <= t; i++) idx = i;
       if (idx !== currentIndex) {
@@ -373,6 +379,73 @@ pear.plugin('synced-lyrics', {
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => ctx.saveOption('fontSize', fontSize), 500);
     }
+
+    // ---- lead-in ---------------------------------------------------------
+    // How long the track is silent before the first sound. Lyrics are
+    // sometimes timed on another release of the song that starts straight
+    // away; Rust then delays them by this much. Remembered per song, since
+    // it can only be measured when a song plays from the very start.
+    // Versioned: earlier builds could store bad readings (see meterLive below).
+    const LEAD_KEY = 'oxide-lead-in-v4';
+    const readLeads = () => { try { return JSON.parse(localStorage.getItem(LEAD_KEY) || '{}'); } catch (_) { return {}; } };
+    const saveLead = (id, seconds) => {
+      try {
+        const all = readLeads();
+        delete all[id];
+        all[id] = seconds;
+        const keys = Object.keys(all);
+        for (const k of keys.slice(0, Math.max(0, keys.length - 300))) delete all[k];
+        localStorage.setItem(LEAD_KEY, JSON.stringify(all));
+      } catch (_) {}
+    };
+    const reportLead = (id, seconds) => pear.invoke('lyrics_lead_in', { videoId: id, seconds })
+      .then((value) => { if (id === songId) { shift = Number(value) || 0; currentIndex = -1; tick(); } })
+      .catch(() => {});
+    let audioReady = false, leadFor = null, leadDone = true, sawStart = false, leadBuf = null;
+    // The meter takes a few seconds to hear anything after the page's audio
+    // engine is set up, so the first song of a session reads as silent at
+    // the start. Readings only count once the meter has heard sound before.
+    let meterLive = false;
+    pear.audio.ready().then(() => { audioReady = true; });
+    const loud = (an) => {
+      if (!leadBuf || leadBuf.length !== an.fftSize) leadBuf = new Float32Array(an.fftSize);
+      an.getFloatTimeDomainData(leadBuf);
+      let sum = 0;
+      for (let i = 0; i < leadBuf.length; i++) sum += leadBuf[i] * leadBuf[i];
+      return Math.sqrt(sum / leadBuf.length) > 0.004;
+    };
+    ctx.interval(() => {
+      const v = pear.video, an = pear.audio.analyser;
+      if (!songId || !v || !an || !audioReady) return;
+      if (leadFor !== songId) {
+        leadFor = songId;
+        sawStart = false;
+        const known = readLeads()[songId];
+        leadDone = typeof known === 'number';
+        if (leadDone) reportLead(songId, known);
+      }
+      if (v.paused || v.seeking || v.muted || v.volume === 0) return;
+      if (leadDone) {
+        if (!meterLive && loud(an)) meterLive = true;
+        return;
+      }
+      if (document.querySelector('#movie_player')?.classList.contains('ad-showing')) return;
+      // Only a play from the very start can be measured.
+      const now = pear.position();
+      if (now < 0.5) sawStart = true;
+      if (!sawStart) return;
+      if (now > 15) { leadDone = true; return; }
+      // The meter only hears the song while the page's audio engine runs.
+      if (pear.audio.context?.state !== 'running') { leadDone = true; return; }
+      // Don't count while the player is loading or buffering (state 1 = playing).
+      if (pear.api?.getPlayerState && pear.api.getPlayerState() !== 1) return;
+      if (!loud(an)) return;
+      leadDone = true;
+      if (!meterLive) { meterLive = true; return; }
+      const seconds = Math.round(now * 100) / 100;
+      saveLead(songId, seconds);
+      reportLead(songId, seconds);
+    }, 40);
 
     ctx.on('song', (song) => pear.whenReady(() => load(song)));
     ctx.command('synced-lyrics:toggle', () => setOpen(!open));

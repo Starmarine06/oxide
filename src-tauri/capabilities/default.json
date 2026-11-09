@@ -13,6 +13,7 @@
   "permissions": [
     "allow-player-update",
     "allow-lyrics-get",
+    "allow-lyrics-lead-in",
     "allow-download",
     "allow-plugin-set-option",
     "allow-menu-model",

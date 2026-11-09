@@ -5,6 +5,7 @@ fn main() {
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
             "player_update",
             "lyrics_get",
+            "lyrics_lead_in",
             "download",
             "plugin_set_option",
             "menu_model",

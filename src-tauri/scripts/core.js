@@ -39,7 +39,35 @@
   } catch (_) {}
 
   const playerApi = () => document.querySelector('#movie_player');
-  const video = () => document.querySelector('video');
+  // The song's own element. Pages can hold other <video>s (hover previews,
+  // animated thumbnails) that come first in the DOM; reading their time and
+  // length throws the lyrics, media controls and plugins off.
+  const video = () =>
+    document.querySelector('#movie_player video.html5-main-video') ||
+    document.querySelector('#movie_player video') ||
+    document.querySelector('ytmusic-player video') ||
+    document.querySelector('video');
+
+  // Song-relative time. YouTube Music can keep one media timeline running
+  // across tracks (gapless playback), so the <video>'s own currentTime and
+  // duration count from the start of the session, not the song. The player
+  // API counts from the start of the current song.
+  const position = () => {
+    const t = playerApi()?.getCurrentTime?.();
+    if (Number.isFinite(t)) return t;
+    return video()?.currentTime || 0;
+  };
+  const duration = () => {
+    const d = playerApi()?.getDuration?.();
+    if (Number.isFinite(d) && d > 0) return d;
+    const v = video();
+    return v && Number.isFinite(v.duration) ? v.duration : 0;
+  };
+  const seekTo = (s) => {
+    const api = playerApi();
+    if (api?.seekTo) api.seekTo(Math.max(0, s), true);
+    else { const v = video(); if (v) v.currentTime = Math.max(0, s); }
+  };
 
   // ---- selectors -----------------------------------------------------------
   // YouTube Music ships two player UIs: the 2026 "miniplayer" redesign and
@@ -98,8 +126,8 @@
       if (api && api.previousVideo) api.previousVideo();
       else $('previous')?.click();
     },
-    seek: (s) => { const v = video(); if (v) v.currentTime = Math.max(0, s); },
-    seekBy: (d) => { const v = video(); if (v) v.currentTime = Math.max(0, v.currentTime + d); },
+    seek: (s) => seekTo(s),
+    seekBy: (d) => seekTo(position() + d),
     volume: (f) => playerApi()?.setVolume?.(Math.round(f * 100)),
     volumeBy: (d) => {
       const api = playerApi();
@@ -167,8 +195,8 @@
       artist: (mdFresh && md.artist) || data.author || '',
       album: (mdFresh && md.album) || null,
       artUrl: art,
-      duration: Number.isFinite(v.duration) ? v.duration : 0,
-      elapsed: v.currentTime || 0,
+      duration: duration(),
+      elapsed: position(),
       paused: v.paused,
       url: `https://music.youtube.com/watch?v=${data.video_id}`,
     };
@@ -648,5 +676,6 @@
     get api() { return playerApi(); },
     get song() { return song; },
     get video() { return video(); },
+    position, duration, seekTo,
   };
 })();

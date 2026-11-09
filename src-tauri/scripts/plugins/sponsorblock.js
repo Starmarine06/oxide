@@ -23,11 +23,11 @@ pear.plugin('sponsorblock', {
 
     ctx.listen(document, 'timeupdate', (e) => {
       const v = e.target;
-      if (!(v instanceof HTMLMediaElement) || !segments.length) return;
-      const t = v.currentTime;
+      if (!(v instanceof HTMLMediaElement) || v !== pear.video || !segments.length) return;
+      const t = pear.position();
       const seg = segments.find((s) => t >= s.start && t < s.end - 0.3);
       if (!seg) return;
-      v.currentTime = Math.min(seg.end, v.duration - 0.1);
+      pear.seekTo(Math.min(seg.end, pear.duration() - 0.1));
       pear.toast(`Skipped ${seg.category.replace('_', ' ')}`, 2000);
     }, true);
   },

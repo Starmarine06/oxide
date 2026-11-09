@@ -73,6 +73,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             player::player_update,
             plugins::lyrics::lyrics_get,
+            plugins::lyrics::lyrics_lead_in,
             plugins::downloader::download,
             plugins::plugin_set_option,
             menu::menu_model,

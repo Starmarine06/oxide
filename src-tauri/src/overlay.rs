@@ -11,7 +11,7 @@ use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl, Webvie
 
 use crate::config::ConfigStore;
 use crate::player::{Change, PlayerState, SongInfo};
-use crate::plugins::Registry;
+use crate::plugins::{lyrics, Registry};
 
 const LABEL: &str = "lyrics-overlay";
 const HEIGHT: f64 = 150.0;
@@ -120,7 +120,7 @@ fn offset_secs(app: &AppHandle) -> f64 {
 }
 
 fn push_clock(app: &AppHandle, song: &SongInfo) {
-    let t = song.elapsed + offset_secs(app);
+    let t = song.elapsed + offset_secs(app) - lyrics::shift_for(&song.video_id);
     eval(app, &format!("window.oxide && oxide.sync({t}, {});", song.paused));
 }
 
@@ -144,18 +144,31 @@ fn push_all(app: &AppHandle) {
 
 /// Fetch lyrics for `song` and send them to the overlay.
 fn load(app: &AppHandle, song: &SongInfo) {
-    push_lyrics(app, &json!({ "message": format!("{} \u{2013} {}", song.title, song.artist) }));
+    let placeholder = json!({ "message": format!("{} \u{2013} {}", song.title, song.artist) });
+    // Claim the track now so the once-a-second reports don't start
+    // another fetch while this one is running.
+    *LOADED.lock().unwrap() = Some((song.video_id.clone(), placeholder.clone()));
+    push_lyrics(app, &placeholder);
     let app = app.clone();
     let song = song.clone();
     tauri::async_runtime::spawn(async move {
-        let result = crate::plugins::lyrics::lyrics_get(song.title.clone(), song.artist.clone(), song.album.clone(), song.duration).await;
+        let result = lyrics::lyrics_get(
+            app.clone(),
+            song.title.clone(),
+            song.artist.clone(),
+            song.album.clone(),
+            song.duration,
+            Some(song.video_id.clone()),
+        )
+        .await;
+        // Messages are shown once, briefly, then the overlay goes quiet.
         let data = match result {
-            Ok(Some(l)) if l.synced.is_some() => json!({ "lines": parse_lrc(l.synced.as_deref().unwrap_or_default()) }),
-            Ok(Some(l)) if l.instrumental => json!({ "message": "\u{266A} Instrumental \u{266A}" }),
-            Ok(_) => json!({ "message": format!("No synced lyrics for {}", song.title) }),
+            Ok(Some(l)) if l.synced.is_some() => json!({ "lines": lyrics::parse_lrc(l.synced.as_deref().unwrap_or_default()) }),
+            Ok(Some(l)) if l.instrumental => json!({ "message": "\u{266A} Instrumental", "transient": true }),
+            Ok(_) => json!({ "message": "No lyrics for this song", "transient": true }),
             Err(e) => {
                 log::warn!("overlay lyrics: {e}");
-                json!({ "message": "Couldn't load lyrics" })
+                json!({ "message": "Couldn't load lyrics", "transient": true })
             }
         };
         // The track may have changed while this was loading.
@@ -163,12 +176,24 @@ fn load(app: &AppHandle, song: &SongInfo) {
         if current.as_deref() != Some(song.video_id.as_str()) {
             return;
         }
-        *LOADED.lock().unwrap() = Some((song.video_id.clone(), data.clone()));
+        // A message has had its moment; reopening the overlay stays blank.
+        let keep = if data.get("transient").is_some() { json!({}) } else { data.clone() };
+        *LOADED.lock().unwrap() = Some((song.video_id.clone(), keep));
         push_lyrics(&app, &data);
         if let Some(live) = app.state::<PlayerState>().current_live() {
             push_clock(&app, &live);
         }
     });
+}
+
+/// Re-send the clock, e.g. after the lyrics shift for the song changed.
+pub fn resync(app: &AppHandle) {
+    if !is_open() {
+        return;
+    }
+    if let Some(song) = app.state::<PlayerState>().current_live() {
+        push_clock(app, &song);
+    }
 }
 
 /// Called from `player_update` on every reported change.
@@ -181,48 +206,4 @@ pub fn on_player_change(app: &AppHandle, song: &SongInfo, change: Change) {
         load(app, song);
     }
     push_clock(app, song);
-}
-
-/// `[mm:ss.xx] text` lines into `[[seconds, text], ...]`, sorted by time.
-fn parse_lrc(lrc: &str) -> Vec<(f64, String)> {
-    let mut out = Vec::new();
-    for raw in lrc.lines() {
-        let mut rest = raw.trim();
-        let mut stamps = Vec::new();
-        while let Some(body) = rest.strip_prefix('[') {
-            let Some(end) = body.find(']') else { break };
-            let tag = &body[..end];
-            rest = body[end + 1..].trim_start();
-            if let Some((m, s)) = tag.split_once(':') {
-                if let (Ok(m), Ok(s)) = (m.trim().parse::<f64>(), s.trim().parse::<f64>()) {
-                    stamps.push(m * 60.0 + s);
-                }
-            }
-        }
-        let text = rest.trim().to_string();
-        for t in stamps {
-            out.push((t, text.clone()));
-        }
-    }
-    out.sort_by(|a, b| a.0.total_cmp(&b.0));
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_lrc;
-
-    #[test]
-    fn parses_lrc() {
-        let lines = parse_lrc("[ar:Someone]\n[00:12.50]Hello\n[01:02.00][00:05.00]Again\n[00:20.00]\n");
-        assert_eq!(
-            lines,
-            vec![
-                (5.0, "Again".to_string()),
-                (12.5, "Hello".to_string()),
-                (20.0, String::new()),
-                (62.0, "Again".to_string()),
-            ]
-        );
-    }
 }

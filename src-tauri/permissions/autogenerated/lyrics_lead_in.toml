@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-lyrics-lead-in"
+description = "Enables the lyrics_lead_in command without any pre-configured scope."
+commands.allow = ["lyrics_lead_in"]
+
+[[permission]]
+identifier = "deny-lyrics-lead-in"
+description = "Denies the lyrics_lead_in command without any pre-configured scope."
+commands.deny = ["lyrics_lead_in"]

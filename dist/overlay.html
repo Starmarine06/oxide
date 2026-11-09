@@ -29,10 +29,14 @@
   // Driven from Rust via eval: oxide.set(...) for lyrics, oxide.sync(...) for the clock.
   const now = document.getElementById('now');
   const next = document.getElementById('next');
-  let lines = [], message = '', clock = { at: 0, base: 0, paused: true }, shown = -2;
+  let lines = [], message = '', hideTimer = 0, clock = { at: 0, base: 0, paused: true }, shown = -2;
 
+  // Run ahead of the last report by at most 1.5 s. The app reports every
+  // second, so a stall (buffering, a loading track) freezes the lyrics
+  // instead of letting them run on without the music.
   function position() {
-    return clock.paused ? clock.base : clock.base + (performance.now() - clock.at) / 1000;
+    if (clock.paused) return clock.base;
+    return clock.base + Math.min(1.5, (performance.now() - clock.at) / 1000);
   }
 
   function show(a, b, dim) {
@@ -65,6 +69,8 @@
     set(data) {
       lines = data.lines || [];
       message = data.message || '';
+      clearTimeout(hideTimer);
+      if (data.transient) hideTimer = setTimeout(() => { message = ''; shown = -2; render(); }, 4000);
       shown = -2;
       render();
     },

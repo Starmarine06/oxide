@@ -25,9 +25,9 @@ pear.plugin('crossfade', {
 
     ctx.listen(document, 'timeupdate', (e) => {
       const v = e.target;
-      if (!(v instanceof HTMLMediaElement) || !gain || v.paused || !Number.isFinite(v.duration) || v.duration < 30) return;
+      if (!(v instanceof HTMLMediaElement) || v !== pear.video || !gain || v.paused || pear.duration() < 30) return;
       if (document.querySelector('#movie_player')?.classList.contains('ad-showing')) return;
-      const remaining = (v.duration - v.currentTime) / (v.playbackRate || 1);
+      const remaining = (pear.duration() - pear.position()) / (v.playbackRate || 1);
       if (remaining <= fadeOut() && !skipping) {
         skipping = true;
         set(0, Math.max(0.1, remaining - 0.15));
@@ -40,17 +40,21 @@ pear.plugin('crossfade', {
       }
     }, true);
 
-    ctx.listen(document, 'loadedmetadata', (e) => {
-      if (!(e.target instanceof HTMLMediaElement) || !gain) return;
+    const fadeInNow = () => {
+      if (!gain) return;
       skipping = false;
       gain.gain.cancelScheduledValues(gain.context.currentTime);
       gain.gain.setValueAtTime(0.0001, gain.context.currentTime);
       set(1, fadeIn());
-    }, true);
+    };
+    ctx.listen(document, 'loadedmetadata', (e) => { if (e.target instanceof HTMLMediaElement) fadeInNow(); }, true);
+    // With gapless playback the next song can start without a new
+    // loadedmetadata, so a song change also fades back in.
+    ctx.on('song', () => { if (skipping) fadeInNow(); });
 
     ctx.listen(document, 'seeked', (e) => {
       const v = e.target;
-      if (v instanceof HTMLMediaElement && gain && v.duration - v.currentTime > fadeOut() + 1) { skipping = false; set(1, 0.2); }
+      if (v instanceof HTMLMediaElement && gain && pear.duration() - pear.position() > fadeOut() + 1) { skipping = false; set(1, 0.2); }
     }, true);
   },
 });

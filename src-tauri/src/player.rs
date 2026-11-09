@@ -112,6 +112,9 @@ pub fn player_update(app: AppHandle, state: SongInfo) {
         return;
     }
     let change = app.state::<PlayerState>().replace(state.clone());
+    // The overlay keeps its own clock; every report keeps it honest,
+    // including small drift while a track buffers.
+    overlay::on_player_change(&app, &state, change);
     if !change.any() {
         return;
     }
@@ -120,6 +123,5 @@ pub fn player_update(app: AppHandle, state: SongInfo) {
         tray::set_tooltip(&app, &state);
     }
     media::set_playback(&app, &state);
-    overlay::on_player_change(&app, &state, change);
     app.state::<Registry>().on_player_change(&app, &state, change);
 }
