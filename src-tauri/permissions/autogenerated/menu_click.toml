@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-menu-click"
+description = "Enables the menu_click command without any pre-configured scope."
+commands.allow = ["menu_click"]
+
+[[permission]]
+identifier = "deny-menu-click"
+description = "Denies the menu_click command without any pre-configured scope."
+commands.deny = ["menu_click"]

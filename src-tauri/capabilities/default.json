@@ -1,0 +1,25 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "youtube-music",
+  "description": "IPC that the YouTube Music page is allowed to use",
+  "windows": [
+    "main-*"
+  ],
+  "remote": {
+    "urls": [
+      "https://music.youtube.com/*"
+    ]
+  },
+  "permissions": [
+    "allow-player-update",
+    "allow-lyrics-get",
+    "allow-download",
+    "allow-plugin-set-option",
+    "allow-menu-model",
+    "allow-menu-click",
+    "allow-window-control",
+    "allow-page-reply",
+    "allow-http-get",
+    "allow-pip-toggle"
+  ]
+}

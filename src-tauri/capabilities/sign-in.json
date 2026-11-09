@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "sign-in",
+  "description": "Google sign-in pages only get the title bar's window buttons",
+  "windows": [
+    "main-*"
+  ],
+  "remote": {
+    "urls": [
+      "https://accounts.google.com/*",
+      "https://accounts.youtube.com/*",
+      "https://www.youtube.com/*",
+      "https://consent.youtube.com/*",
+      "https://consent.google.com/*"
+    ]
+  },
+  "permissions": [
+    "allow-window-control"
+  ]
+}

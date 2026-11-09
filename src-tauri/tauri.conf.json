@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Oxide",
+  "version": "0.1.0",
+  "identifier": "dev.oxide.music",
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Music",
+    "shortDescription": "YouTube Music desktop client",
+    "longDescription": "A lightweight YouTube Music desktop client with ad blocking, Discord status, synced lyrics, a downloader and dozens of plugins.",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhFQUIwRTBGRTExMDU3RUMKUldUc1Z4RGhEdzZyampvektWVFQxWlV3Z3YzY05hVkZZVzZUckpPeUNQV2F4b2dpQUw4U2hjWjYK",
+      "endpoints": [
+        "https://github.com/Starmarine06/oxide/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

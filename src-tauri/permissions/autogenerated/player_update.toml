@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-player-update"
+description = "Enables the player_update command without any pre-configured scope."
+commands.allow = ["player_update"]
+
+[[permission]]
+identifier = "deny-player-update"
+description = "Denies the player_update command without any pre-configured scope."
+commands.deny = ["player_update"]
