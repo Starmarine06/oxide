@@ -62,24 +62,6 @@ Turn each one on or off under **Plugins**. Changes apply instantly with no resta
 
 The only Pear Desktop plugin not ported is **Touch Bar**. Tauri has no API for the MacBook Touch Bar, which Apple has also discontinued. Music Together relays state through a private topic on ntfy.sh instead of WebRTC, because YouTube Music's security policy blocks WebRTC signaling inside the page.
 
-## Releasing an update
-
-One-time setup:
-
-1. Create the GitHub repo `Starmarine06/oxide` and push this project. If you use a different name, change the URL in `src-tauri/tauri.conf.json` under `plugins.updater.endpoints`.
-2. Add two repository secrets (**Settings > Secrets and variables > Actions**):
-   - `TAURI_SIGNING_PRIVATE_KEY`: the contents of `~/.tauri/oxide.key`
-   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: leave it empty (the key has no password)
-
-   Keep `~/.tauri/oxide.key` backed up. Without it, installed copies can never be updated again.
-
-Each release:
-
-```sh
-npm run release -- 0.2.0
-```
-
-That bumps the version, commits, tags and pushes. GitHub Actions then builds Windows, macOS and Linux installers, signs them and publishes the release. Every installed Oxide sees it within 6 hours (or right away via **App > Check for updates**), asks the user, installs and restarts.
 
 ## Build it yourself
 
@@ -101,26 +83,6 @@ Settings are stored in `config.json` (**App > Open config folder**):
 - Linux: `~/.config/dev.oxide.music/`
 
 The browser profile, which holds your sign-in, lives in the matching local app-data folder under `profile/`.
-
-## How it's built
-
-```
-src-tauri/src/
-  lib.rs, window.rs     app setup, the frameless window, persistent profile
-  menu.rs               menu model rendered by the page's title bar
-  player.rs, media.rs   song state from the page, OS media controls
-  updater.rs            GitHub-release self-updates
-  bridge.rs             Rust <-> page requests, prompts, allow-listed fetch
-  plugins/              plugin trait + Rust plugins
-src-tauri/scripts/
-  titlebar.js           title bar, menus, shortcuts, window buttons
-  core.js               page bridge, plugin runtime, shared audio graph, UI helpers
-  plugins/*.js          page plugins
-```
-
-A page plugin is a JS file that calls `pear.plugin(id, { start(ctx, config) { ... } })` plus one `page_plugin!` line in `plugins/page.rs`. Everything the plugin creates through `ctx` (styles, listeners, timers, DOM nodes, audio filters) is cleaned up when it's switched off. YouTube Music enforces Trusted Types, so build DOM with `pear.el()` and never assign HTML strings.
-
-YouTube Music ships two player UIs: the 2026 miniplayer redesign and the older player bar. Selectors for both live in one place (`SEL` in `core.js`).
 
 ## License
 
