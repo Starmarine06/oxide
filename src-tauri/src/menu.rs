@@ -203,6 +203,7 @@ pub fn handle(app: &AppHandle, id: &str) {
         "play:voldown" => window::page_command(app, "volumeBy", Some(json!(-5))),
         "play:mute" => window::page_command(app, "mute", None),
         "tray:show" => window::show(app),
+        "tray:lyrics" => crate::overlay::toggle(app),
         "opt:hide_to_tray" => toggle_option(app, |o| &mut o.hide_to_tray),
         "opt:start_minimized" => toggle_option(app, |o| &mut o.start_minimized),
         "opt:hide_menu" => toggle_option(app, |o| &mut o.hide_menu),

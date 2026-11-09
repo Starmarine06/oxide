@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{AppHandle, Manager};
 
-use crate::{media, plugins::Registry, tray};
+use crate::{media, overlay, plugins::Registry, tray};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,5 +120,6 @@ pub fn player_update(app: AppHandle, state: SongInfo) {
         tray::set_tooltip(&app, &state);
     }
     media::set_playback(&app, &state);
+    overlay::on_player_change(&app, &state, change);
     app.state::<Registry>().on_player_change(&app, &state, change);
 }

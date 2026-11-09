@@ -2,6 +2,7 @@ mod bridge;
 mod config;
 mod media;
 mod menu;
+mod overlay;
 mod player;
 mod plugins;
 mod tray;

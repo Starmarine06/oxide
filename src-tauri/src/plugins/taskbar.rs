@@ -1,4 +1,4 @@
-//! Previous / play-pause / next buttons in the Windows taskbar thumbnail.
+//! Previous / play-pause / next / lyrics buttons in the Windows taskbar thumbnail.
 
 use serde_json::Value;
 use tauri::AppHandle;
@@ -16,7 +16,7 @@ impl Plugin for TaskbarMediaControl {
         "Taskbar media controls"
     }
     fn description(&self) -> &'static str {
-        "Previous, play/pause and next buttons in the taskbar preview"
+        "Previous, play/pause, next and on-screen lyrics buttons in the taskbar preview"
     }
     fn supported(&self) -> bool {
         cfg!(target_os = "windows")
@@ -70,6 +70,7 @@ mod imp {
     const ID_PREV: u32 = 0x4F01;
     const ID_PLAY: u32 = 0x4F02;
     const ID_NEXT: u32 = 0x4F03;
+    const ID_LYRICS: u32 = 0x4F04;
     const SUBCLASS_ID: usize = 0x0A1D;
     const THBN_CLICKED: u32 = 0x1800;
 
@@ -81,15 +82,16 @@ mod imp {
         unsafe { CreateIconFromResourceEx(png, true, 0x0003_0000, 32, 32, LR_DEFAULTCOLOR).unwrap_or_default() }
     }
 
-    fn icons() -> &'static [isize; 4] {
+    fn icons() -> &'static [isize; 5] {
         // HICONs live for the whole process.
-        static ICONS: OnceLock<[isize; 4]> = OnceLock::new();
+        static ICONS: OnceLock<[isize; 5]> = OnceLock::new();
         ICONS.get_or_init(|| {
             [
                 icon(include_bytes!("../../icons/taskbar/previous.png")).0 as isize,
                 icon(include_bytes!("../../icons/taskbar/play.png")).0 as isize,
                 icon(include_bytes!("../../icons/taskbar/pause.png")).0 as isize,
                 icon(include_bytes!("../../icons/taskbar/next.png")).0 as isize,
+                icon(include_bytes!("../../icons/taskbar/lyrics.png")).0 as isize,
             ]
         })
     }
@@ -102,7 +104,7 @@ mod imp {
         out
     }
 
-    fn buttons(playing: bool) -> [THUMBBUTTON; 3] {
+    fn buttons(playing: bool) -> [THUMBBUTTON; 4] {
         let ic = icons();
         let mask = THUMBBUTTONMASK(THB_ICON.0 | THB_TOOLTIP.0 | THB_FLAGS.0);
         let flags: THUMBBUTTONFLAGS = THBF_ENABLED;
@@ -118,6 +120,7 @@ mod imp {
             mk(ID_PREV, ic[0], "Previous"),
             if playing { mk(ID_PLAY, ic[2], "Pause") } else { mk(ID_PLAY, ic[1], "Play") },
             mk(ID_NEXT, ic[3], "Next"),
+            mk(ID_LYRICS, ic[4], "Lyrics on screen"),
         ]
     }
 
@@ -140,6 +143,7 @@ mod imp {
                     ID_PREV => window::page_command(app, "previous", None),
                     ID_PLAY => window::page_command(app, "toggle", None),
                     ID_NEXT => window::page_command(app, "next", None),
+                    ID_LYRICS => crate::overlay::toggle(app),
                     _ => {}
                 }
             }

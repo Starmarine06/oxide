@@ -1,22 +1,27 @@
 //! System tray icon with playback controls.
 
 use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager, Wry};
 
 // Menu clicks are routed by the app-wide handler in lib.rs.
 use crate::{player::SongInfo, window};
 
 const TRAY_ID: &str = "main-tray";
 
+/// The "Lyrics on screen" check item, kept so its tick follows the overlay.
+struct LyricsItem(CheckMenuItem<Wry>);
+
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
+    let lyrics = CheckMenuItem::with_id(app, "tray:lyrics", "Lyrics on screen", true, false, None::<&str>)?;
     let items = Menu::with_items(
         app,
         &[
             &MenuItem::with_id(app, "tray:toggle", "Play / Pause", true, None::<&str>)?,
             &MenuItem::with_id(app, "tray:next", "Next", true, None::<&str>)?,
             &MenuItem::with_id(app, "tray:previous", "Previous", true, None::<&str>)?,
+            &lyrics,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "tray:show", "Show window", true, None::<&str>)?,
             &MenuItem::with_id(app, "tray:update", "Check for updates", true, None::<&str>)?,
@@ -40,7 +45,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+    app.manage(LyricsItem(lyrics));
     Ok(())
+}
+
+pub fn set_lyrics_checked(app: &AppHandle, checked: bool) {
+    if let Some(item) = app.try_state::<LyricsItem>() {
+        let _ = item.0.set_checked(checked);
+    }
 }
 
 pub fn set_tooltip(app: &AppHandle, song: &SongInfo) {
