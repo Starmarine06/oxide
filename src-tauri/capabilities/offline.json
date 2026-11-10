@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "offline",
+  "description": "The bundled offline player (offline.html): plays downloaded songs and drives the same media controls, lyrics and title bar",
+  "windows": [
+    "main-*"
+  ],
+  "permissions": [
+    "allow-offline-library",
+    "allow-go-online",
+    "allow-player-update",
+    "allow-lyrics-get",
+    "allow-menu-model",
+    "allow-menu-click",
+    "allow-window-control",
+    "allow-page-reply"
+  ]
+}

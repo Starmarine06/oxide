@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-go-online"
+description = "Enables the go_online command without any pre-configured scope."
+commands.allow = ["go_online"]
+
+[[permission]]
+identifier = "deny-go-online"
+description = "Denies the go_online command without any pre-configured scope."
+commands.deny = ["go_online"]

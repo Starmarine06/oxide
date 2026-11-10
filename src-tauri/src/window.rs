@@ -72,8 +72,13 @@ pub fn create(app: &AppHandle, url: &str, geometry: Option<Geometry>, visible: b
     let label = format!("main-{generation}");
     let cfg = app.state::<ConfigStore>().get();
 
-    let url = url.parse().unwrap_or_else(|_| START_URL.parse().unwrap());
-    let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
+    // The offline player is a bundled page; everything else is the website.
+    let target = if crate::library::is_offline_url(url) {
+        WebviewUrl::App("offline.html".into())
+    } else {
+        WebviewUrl::External(url.parse().unwrap_or_else(|_| START_URL.parse().unwrap()))
+    };
+    let mut builder = WebviewWindowBuilder::new(app, &label, target)
         .title("Oxide")
         .min_inner_size(400.0, 300.0)
         .visible(false)

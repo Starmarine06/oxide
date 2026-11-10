@@ -63,6 +63,12 @@
     const v = video();
     return v && Number.isFinite(v.duration) ? v.duration : 0;
   };
+  // The volume slider's position (0 to 100), not the loudness it maps to;
+  // the offline player uses the same curve.
+  const volumeLevel = () => {
+    const v = Number(document.querySelector('#volume-slider')?.value);
+    return Number.isFinite(v) ? v : null;
+  };
   const seekTo = (s) => {
     const api = playerApi();
     if (api?.seekTo) api.seekTo(Math.max(0, s), true);
@@ -199,6 +205,8 @@
       elapsed: position(),
       paused: v.paused,
       url: `https://music.youtube.com/watch?v=${data.video_id}`,
+      volume: volumeLevel(),
+      muted: !!playerApi()?.isMuted?.(),
     };
   }
 
@@ -213,6 +221,41 @@
   }
 
   setInterval(tick, 1000);
+
+  // Oxide reopens a song where it left off (?oxide_t=seconds), e.g. coming
+  // back from the offline player.
+  const params = new URLSearchParams(location.search);
+  const resumeAt = Number(params.get('oxide_t'));
+  // ...and with the offline player's volume (?oxide_vol=0..100&oxide_muted=1).
+  const volumeAt = params.get('oxide_vol');
+  if (volumeAt !== null && Number.isFinite(Number(volumeAt))) {
+    const until = Date.now() + 30000;
+    const apply = () => {
+      const api = playerApi();
+      const slider = document.querySelector('#volume-slider');
+      if (api?.getVolume && slider) {
+        // Through the slider, so YouTube Music's own setting and curve follow.
+        slider.value = Math.min(100, Math.max(0, Math.round(Number(volumeAt))));
+        slider.dispatchEvent(new CustomEvent('change'));
+        if (params.get('oxide_muted') === '1') api.mute(); else api.unMute();
+        return;
+      }
+      if (Date.now() < until) setTimeout(apply, 300);
+    };
+    apply();
+  }
+  if (resumeAt > 0) {
+    const until = Date.now() + 30000;
+    const resume = () => {
+      if (duration() > 0) {
+        seekTo(resumeAt);
+        playerApi()?.playVideo?.();
+        return;
+      }
+      if (Date.now() < until) setTimeout(resume, 500);
+    };
+    setTimeout(resume, 500);
+  }
   for (const ev of ['play', 'pause', 'seeked', 'loadedmetadata']) {
     document.addEventListener(ev, (e) => { if (e.target instanceof HTMLMediaElement) setTimeout(tick, 50); }, true);
   }
@@ -504,6 +547,39 @@
       return { mode: label.includes('one') ? 'ONE' : label.includes('all') ? 'ALL' : 'NONE' };
     },
     'fullscreen': () => ({ state: playerPageOpen() }),
+    // Every song in the main list of the open playlist or album page (not the
+    // "Suggestions" below it), scrolling down until a long list has loaded.
+    // The downloader fetches them one by one.
+    'collection-items': async () => {
+      const shelf = () => document.querySelector(
+        'ytmusic-browse-response ytmusic-playlist-shelf-renderer, ytmusic-browse-response ytmusic-shelf-renderer');
+      const read = () => {
+        const out = new Map();
+        for (const row of shelf()?.querySelectorAll('ytmusic-responsive-list-item-renderer') || []) {
+          const link = row.querySelector('a[href*="watch?v="]');
+          const id = link && new URL(link.href, location.href).searchParams.get('v');
+          if (!id || out.has(id)) continue;
+          const title = row.querySelector('.title')?.textContent?.trim() || '';
+          const artist = row.querySelector('.secondary-flex-columns yt-formatted-string')?.textContent?.trim() || '';
+          out.set(id, { videoId: id, title, artist });
+        }
+        return out;
+      };
+      const top = document.scrollingElement?.scrollTop || 0;
+      let items = read(), last = -1, stable = 0;
+      const deadline = Date.now() + 120000;
+      while (stable < 3 && Date.now() < deadline) {
+        const rows = shelf()?.querySelectorAll('ytmusic-responsive-list-item-renderer');
+        rows?.[rows.length - 1]?.scrollIntoView({ block: 'end' });
+        await new Promise((r) => setTimeout(r, 900));
+        items = read();
+        if (items.size === last) stable++; else { stable = 0; last = items.size; }
+      }
+      if (document.scrollingElement) document.scrollingElement.scrollTop = top;
+      const name = document.querySelector('ytmusic-responsive-header-renderer h1, ytmusic-detail-header-renderer .title')?.textContent?.trim()
+        || document.title.replace(/\s*-\s*YouTube Music\s*$/, '');
+      return { name, items: [...items.values()] };
+    },
     'queue': () => {
       const items = [...document.querySelectorAll('ytmusic-player-queue-item')];
       return {

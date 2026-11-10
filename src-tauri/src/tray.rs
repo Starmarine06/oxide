@@ -24,6 +24,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &lyrics,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "tray:show", "Show window", true, None::<&str>)?,
+            &MenuItem::with_id(app, "tray:offline", "Offline library", true, None::<&str>)?,
             &MenuItem::with_id(app, "tray:update", "Check for updates", true, None::<&str>)?,
             &MenuItem::with_id(app, "tray:quit", "Quit", true, None::<&str>)?,
         ],

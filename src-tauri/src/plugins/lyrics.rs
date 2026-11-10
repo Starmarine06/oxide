@@ -512,6 +512,53 @@ async fn ytm_lyrics(video_id: String) -> Result<Option<Lyrics>, String> {
     }))
 }
 
+/// Every distinct video id in a response, in order.
+fn video_ids(v: &Value, out: &mut Vec<String>) {
+    match v {
+        Value::Object(map) => {
+            if let Some(Value::String(id)) = map.get("videoId") {
+                if !out.contains(id) {
+                    out.push(id.clone());
+                }
+            }
+            map.values().for_each(|x| video_ids(x, out));
+        }
+        Value::Array(list) => list.iter().for_each(|x| video_ids(x, out)),
+        _ => {}
+    }
+}
+
+/// A playable copy of a song whose own upload is gone ("Video unavailable"),
+/// found the way YouTube Music does it when such a song is in a playlist:
+/// same title and artist, about the same length. Returns its video id and
+/// "Artist - Title".
+pub(crate) async fn playable_copy(video_id: &str) -> Option<(String, String)> {
+    let gone = ytm_post("player", WEB_REMIX, json!({ "videoId": video_id })).await.ok()?;
+    let details = &gone["videoDetails"];
+    let title = details["title"].as_str()?.to_string();
+    let artist = details["author"].as_str().unwrap_or("").to_string();
+    let length: f64 = details["lengthSeconds"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+
+    // "Songs" filter of the search page.
+    let query = json!({ "query": format!("{title} {artist}"), "params": "EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D" });
+    let results = ytm_post("search", WEB_REMIX, query).await.ok()?;
+    let mut ids = Vec::new();
+    video_ids(&results, &mut ids);
+    for id in ids.into_iter().filter(|id| id != video_id).take(6) {
+        let Ok(p) = ytm_post("player", WEB_REMIX, json!({ "videoId": id })).await else { continue };
+        if p["playabilityStatus"]["status"].as_str() != Some("OK") {
+            continue;
+        }
+        let d = &p["videoDetails"];
+        let (t, a) = (d["title"].as_str().unwrap_or(""), d["author"].as_str().unwrap_or(""));
+        let len: f64 = d["lengthSeconds"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+        if names_match(t, &title) && (length <= 0.0 || (len - length).abs() <= 10.0) {
+            return Some((id, format!("{a} - {t}")));
+        }
+    }
+    None
+}
+
 // ---- pipeline ------------------------------------------------------------------
 
 fn from_lrclib(t: &LrclibTrack) -> Lyrics {
@@ -731,7 +778,20 @@ async fn lookup(app: &AppHandle, title: String, artist: String, album: Option<St
         MEMORY.lock().unwrap().insert(key, Some(hit.clone()));
         return Ok(Some(hit));
     }
-    let found = find(title, artist, album, duration, video_id).await?;
+    // Lyrics saved with a download work without a connection. Estimated
+    // ones are only used when the network has nothing better.
+    let saved = video_id.as_deref().and_then(|v| crate::library::lyrics_for(app, v));
+    if let Some(l) = saved.as_ref().filter(|l| l.is_final()) {
+        MEMORY.lock().unwrap().insert(key, Some(l.clone()));
+        return Ok(Some(l.clone()));
+    }
+    let found = match find(title, artist, album, duration, video_id).await {
+        Ok(found) => found.or(saved),
+        Err(e) => match saved {
+            Some(l) => Some(l),
+            None => return Err(e),
+        },
+    };
     match &found {
         Some(l) if l.is_final() => cache_write(app, &key, l),
         // Misses and estimated timing stay in memory only, so better
@@ -740,6 +800,21 @@ async fn lookup(app: &AppHandle, title: String, artist: String, album: Option<St
     }
     MEMORY.lock().unwrap().insert(key, found.clone());
     Ok(found)
+}
+
+/// Lyrics to save with a download: the best available now, estimated
+/// timing included, so they work offline later.
+pub async fn for_download(app: &AppHandle, title: String, artist: String, album: Option<String>, duration: f64, video_id: String) -> Option<Lyrics> {
+    match lookup(app, title, artist, album, duration, Some(video_id)).await {
+        Ok(found) => found.filter(|l| l.synced.is_some() || l.plain.is_some() || l.instrumental).map(|mut l| {
+            l.shift = 0.0;
+            l
+        }),
+        Err(e) => {
+            log::warn!("no lyrics saved for a download: {e}");
+            None
+        }
+    }
 }
 
 // ---- lead-in correction --------------------------------------------------------

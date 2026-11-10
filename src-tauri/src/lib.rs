@@ -1,5 +1,7 @@
+mod audio_session;
 mod bridge;
 mod config;
+mod library;
 mod media;
 mod menu;
 mod overlay;
@@ -82,6 +84,8 @@ pub fn run() {
             bridge::page_reply,
             bridge::http_get,
             plugins::window_plugins::pip_toggle,
+            library::offline_library,
+            library::go_online,
         ])
         // Tray menu clicks.
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
@@ -99,6 +103,7 @@ pub fn run() {
             let cfg = app.state::<ConfigStore>().get();
             window::create(&handle, window::START_URL, cfg.window, !cfg.options.start_minimized)?;
             app.state::<Registry>().start_enabled(&handle);
+            library::check_at_startup(&handle);
             updater::start_background_checks(&handle);
             Ok(())
         })

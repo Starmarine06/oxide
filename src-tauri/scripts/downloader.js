@@ -12,10 +12,10 @@ pear.plugin('downloader', {
     ctx.on('download', (e) => {
       const label = e.label ? ` ${e.label}` : '';
       switch (e.status) {
-        case 'start': pear.toast(`Downloading${label}…`, 0); break;
+        case 'start': pear.toast(e.label === 'playlist' ? 'Downloading the playlist…' : `Downloading${label}…`, 0); break;
         case 'setup': pear.toast(e.message + '…', 0); break;
-        case 'progress': pear.toast(`Downloading… ${e.percent}%`, 0); break;
-        case 'done': pear.toast('Download finished.', 4000); break;
+        case 'progress': pear.toast(`Downloading${e.label ? ' · ' + e.label : ''}… ${e.percent}%`, 0); break;
+        case 'done': pear.toast(e.message || 'Download finished.', 5000); break;
         case 'error': pear.toast('Download failed: ' + e.message, 8000); break;
       }
     });

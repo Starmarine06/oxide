@@ -14,6 +14,8 @@ fn main() {
             "page_reply",
             "http_get",
             "pip_toggle",
+            "offline_library",
+            "go_online",
         ])),
     )
     .expect("failed to run tauri-build");

@@ -46,6 +46,7 @@ pub fn model(app: &AppHandle) -> Value {
             item("app:devtools", "Developer tools", Some("CmdOrCtrl+Shift+I")),
             item("app:config", "Open config folder", None),
             item("app:update", "Check for updates", None),
+            item("app:offline", "Offline library", None),
             sep(),
             item("app:quit", "Quit", Some("CmdOrCtrl+Q")),
         ],
@@ -203,6 +204,10 @@ pub fn handle(app: &AppHandle, id: &str) {
         "play:voldown" => window::page_command(app, "volumeBy", Some(json!(-5))),
         "play:mute" => window::page_command(app, "mute", None),
         "tray:show" => window::show(app),
+        "app:offline" | "tray:offline" => {
+            window::show(app);
+            crate::library::show_offline(app);
+        }
         "tray:lyrics" => crate::overlay::toggle(app),
         "opt:hide_to_tray" => toggle_option(app, |o| &mut o.hide_to_tray),
         "opt:start_minimized" => toggle_option(app, |o| &mut o.start_minimized),

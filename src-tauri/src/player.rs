@@ -22,6 +22,12 @@ pub struct SongInfo {
     pub elapsed: f64,
     pub paused: bool,
     pub url: String,
+    /// Volume slider, 0 to 100, carried over when switching between
+    /// YouTube Music and the offline player.
+    #[serde(default)]
+    pub volume: Option<f64>,
+    #[serde(default)]
+    pub muted: Option<bool>,
 }
 
 impl SongInfo {
@@ -117,6 +123,9 @@ pub fn player_update(app: AppHandle, state: SongInfo) {
     overlay::on_player_change(&app, &state, change);
     if !change.any() {
         return;
+    }
+    if (change.playback || change.song) && !state.paused {
+        crate::audio_session::label_soon();
     }
     if change.metadata {
         media::set_metadata(&app, &state);
