@@ -533,6 +533,34 @@
     };
   })();
 
+  // Audio levels for the on-screen lyrics' visualizer: 32 bands from 40 Hz
+  // to 12 kHz, about 20 times a second, for as long as the app wants them.
+  let levelsOn = false;
+  window.__oxideLevels = () => {
+    if (levelsOn) return;
+    levelsOn = true;
+    audio.ready().then(() => {
+      const an = audio.analyser;
+      const bins = new Uint8Array(an.frequencyBinCount);
+      const BANDS = 32;
+      const nyquist = audio.context.sampleRate / 2;
+      const edge = (i) => Math.min(bins.length - 1, Math.round((40 * (12000 / 40) ** (i / BANDS)) / nyquist * bins.length));
+      const step = async () => {
+        an.getByteFrequencyData(bins);
+        const levels = [];
+        for (let b = 0; b < BANDS; b++) {
+          let peak = 0;
+          for (let i = edge(b), end = Math.max(edge(b), edge(b + 1) - 1); i <= end; i++) peak = Math.max(peak, bins[i]);
+          levels.push(peak);
+        }
+        let more = false;
+        try { more = await invoke('overlay_levels', { levels }); } catch (_) {}
+        if (more) setTimeout(step, 50); else levelsOn = false;
+      };
+      step();
+    }).catch(() => { levelsOn = false; });
+  };
+
   // ---- Rust <-> page round trips -----------------------------------------
 
   // Rust asks the page for something (`pear.answer`) and waits for the reply.

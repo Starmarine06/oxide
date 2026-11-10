@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-overlay-levels"
+description = "Enables the overlay_levels command without any pre-configured scope."
+commands.allow = ["overlay_levels"]
+
+[[permission]]
+identifier = "deny-overlay-levels"
+description = "Denies the overlay_levels command without any pre-configured scope."
+commands.deny = ["overlay_levels"]

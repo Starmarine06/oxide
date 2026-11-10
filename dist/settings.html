@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oxide Settings</title>
+<style>
+  :root {
+    --bg: #111113; --panel: #18181b; --raised: #222226; --line: #2c2c31; --ink: #f2f2f3; --ink-2: #a1a1aa; --ink-3: #71717a;
+    --accent: #e8642c; --focus: #38bdf8;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 400 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 620px; margin: 0 auto; padding: 28px 24px 40px; }
+  h1 { font: 650 22px/1.2 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; margin: 0 0 4px; letter-spacing: -.01em; }
+  .lede { color: var(--ink-2); margin: 0 0 24px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 16px; }
+  section > h2 { font: 600 12px/1 "Segoe UI", system-ui, sans-serif; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin: 0; padding: 16px 18px 6px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--line); }
+  section > h2 + .row { border-top: 0; }
+  .row .what { min-width: 0; }
+  .row .name { font-weight: 600; }
+  .row .hint { color: var(--ink-2); font-size: 12.5px; margin-top: 2px; }
+  .row.stack { flex-direction: column; align-items: stretch; gap: 10px; }
+
+  /* Switch */
+  .switch { position: relative; flex: none; width: 40px; height: 22px; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .switch span { position: absolute; inset: 0; border-radius: 11px; background: #3a3a40; transition: background .15s; pointer-events: none; }
+  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::after { transform: translateX(18px); }
+  .switch input:focus-visible + span { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus); }
+
+  /* Segmented choices */
+  .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 6px; }
+  .seg button {
+    height: 36px; border: 1px solid var(--line); background: var(--raised); color: var(--ink); border-radius: 7px;
+    font: 500 13px/1 inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .seg button:hover { border-color: #3f3f46; }
+  .seg button[aria-pressed="true"] { border-color: var(--accent); background: rgba(232,100,44,.14); }
+  .seg button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .seg svg { width: 18px; height: 14px; flex: none; }
+  /* Positions in screen order: top row, then bottom row. */
+  #presets { grid-template-columns: repeat(3, 1fr); }
+
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .button {
+    height: 34px; padding: 0 14px; border-radius: 7px; border: 1px solid var(--line); background: var(--raised); color: var(--ink);
+    font: 600 13px/1 inherit; cursor: pointer;
+  }
+  .button:hover { border-color: #3f3f46; }
+  .button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .button.primary:hover { filter: brightness(1.08); }
+  .button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .status { color: var(--ink-2); font-size: 12.5px; }
+
+  /* Colours */
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .swatch {
+    width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; padding: 0; cursor: pointer;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.15);
+  }
+  .swatch[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+  .swatch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .swatch.cover { display: grid; place-items: center; color: #fff; }
+  .swatch.cover svg { width: 15px; height: 15px; }
+  .color-row { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 12px; }
+  .color-row > span { font-weight: 600; }
+  @media (max-width: 520px) { .color-row { grid-template-columns: 1fr; } }
+  .custom-color { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 12.5px; margin-left: 4px; }
+  .custom-color input { width: 34px; height: 30px; border: 0; padding: 0; background: none; cursor: pointer; }
+
+  /* Sliders */
+  .slider { display: grid; grid-template-columns: 110px 1fr 56px; align-items: center; gap: 12px; }
+  .slider label { font-weight: 600; }
+  .slider output { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+  .parts { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .parts .row { border-top: 1px solid var(--line); }
+  .parts .row:nth-child(odd) { border-right: 1px solid var(--line); }
+  footer { color: var(--ink-3); font-size: 12px; text-align: center; margin-top: 8px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 520px) { .parts { grid-template-columns: 1fr; } .parts .row:nth-child(odd) { border-right: 0; } .slider { grid-template-columns: 1fr 56px; } .slider label { grid-column: 1 / -1; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Settings</h1>
+  <p class="lede">Changes apply straight away.</p>
+
+  <section aria-labelledby="h-lyrics">
+    <h2 id="h-lyrics">On-screen lyrics</h2>
+    <div class="row">
+      <div class="what"><div class="name">Show lyrics on screen</div><div class="hint">Synced lyrics over everything else, while music plays.</div></div>
+      <label class="switch"><input type="checkbox" id="open" aria-label="Show lyrics on screen"><span></span></label>
+    </div>
+    <div class="row">
+      <div class="what"><div class="name">Click-through</div><div class="hint">On: clicks always go to whatever's underneath. Off: hover the lyrics for buttons, and drag them to move.</div></div>
+      <label class="switch"><input type="checkbox" id="clickThrough" aria-label="Click-through"><span></span></label>
+    </div>
+    <div class="row stack">
+      <div class="what"><div class="name">Position</div><div class="hint">Moves everything to a corner or edge of the screen.</div></div>
+      <div class="seg" id="presets" role="group" aria-label="Position"></div>
+    </div>
+    <div class="row stack">
+      <div class="what"><div class="name">Layout</div><div class="hint">Place, resize and turn each part anywhere on the screen.</div></div>
+      <div class="btns">
+        <button class="button primary" id="edit">Edit layout</button>
+        <button class="button" id="reset">Reset layout</button>
+        <span class="status" id="layoutStatus"></span>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-show">
+    <h2 id="h-show">Show</h2>
+    <div class="parts" id="parts"></div>
+  </section>
+
+  <section aria-labelledby="h-colors">
+    <h2 id="h-colors">Colours</h2>
+    <div class="row stack" id="partColors"></div>
+    <div class="row">
+      <div class="what"><div class="hint">“Album cover” follows each song’s cover, brightened so it reads over anything.</div></div>
+      <button class="button" id="colorDefaults">All white</button>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-viz" id="vizSection">
+    <h2 id="h-viz">Visualizer</h2>
+    <div class="row stack">
+      <div class="what"><div class="name">Style</div></div>
+      <div class="seg" id="styles" role="group" aria-label="Visualizer style"></div>
+    </div>
+    <div class="row stack">
+      <div class="what"><div class="name">Colour</div></div>
+      <div class="swatches" id="colors" role="group" aria-label="Visualizer colour"></div>
+    </div>
+    <div class="row stack">
+      <div class="slider"><label for="bars">Bars</label><input type="range" id="bars" min="8" max="96" step="1"><output id="barsOut"></output></div>
+      <div class="slider"><label for="sensitivity">Sensitivity</label><input type="range" id="sensitivity" min="0.3" max="3" step="0.05"><output id="sensitivityOut"></output></div>
+      <div class="slider"><label for="opacity">Opacity</label><input type="range" id="opacity" min="0.05" max="1" step="0.01"><output id="opacityOut"></output></div>
+      <div class="slider"><label for="smoothing">Smoothing</label><input type="range" id="smoothing" min="0" max="0.95" step="0.01"><output id="smoothingOut"></output></div>
+    </div>
+    <div class="row">
+      <div class="what"><div class="hint">The visualizer shows once it's turned on under Show.</div></div>
+      <button class="button" id="vizDefaults">Restore defaults</button>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-general">
+    <h2 id="h-general">General</h2>
+    <div id="general"></div>
+  </section>
+
+  <footer id="version"></footer>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const invoke = (cmd, args) => window.__TAURI_INTERNALS__.invoke(cmd, args);
+  const click = (id) => invoke('menu_click', { id });
+  let state = null;
+
+  const STYLES = [
+    ['bars', 'Bars', '<path d="M2 13V8M6 13V4M10 13V6M14 13V2"/>'],
+    ['mirror', 'Mirrored', '<path d="M2 10V4M6 12V2M10 11V3M14 9V5"/>'],
+    ['wave', 'Wave', '<path d="M1 10c2-6 4-6 5-2s3 4 5-1 3-3 4-1"/>'],
+    ['circle', 'Circle', '<circle cx="9" cy="7" r="3"/><path d="M9 1v2M9 11v2M3 7h2M13 7h2M4.8 2.8l1.4 1.4M11.8 9.8l1.4 1.4M4.8 11.2l1.4-1.4M11.8 4.2l1.4-1.4"/>'],
+    ['dots', 'Dots', '<circle cx="3" cy="12" r="1"/><circle cx="3" cy="9" r="1"/><circle cx="7" cy="12" r="1"/><circle cx="7" cy="9" r="1"/><circle cx="7" cy="6" r="1"/><circle cx="11" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="9" r="1"/>'],
+  ];
+  const COVER_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2"/><circle cx="6" cy="6" r="1.3"/><path d="M3 12l3.5-3.5 2.5 2.5 2-2 2 2"/></svg>';
+  const COLORS = [
+    ['white', 'White', '#ffffff'],
+    ['cover', 'Album cover', 'linear-gradient(135deg,#8a6a4a,#c9884a 55%,#5a7a8a)'],
+    ['accent', 'Oxide orange', '#e8642c'],
+    ['#38bdf8', 'Sky', '#38bdf8'],
+    ['#f472b6', 'Pink', '#f472b6'],
+    ['#4ade80', 'Green', '#4ade80'],
+    ['#a78bfa', 'Violet', '#a78bfa'],
+    ['#facc15', 'Yellow', '#facc15'],
+    ['rainbow', 'Rainbow', 'linear-gradient(135deg,#f43f5e,#f59e0b,#84cc16,#06b6d4,#8b5cf6)'],
+  ];
+  const VIZ_DEFAULTS = { style: 'bars', color: 'white', bars: 32, sensitivity: 1, opacity: 0.35, smoothing: 0.6 };
+  const OPTIONS = [
+    ['hideToTray', 'opt:hide_to_tray', 'Hide to tray on close', 'Closing the window keeps music playing in the tray.'],
+    ['startMinimized', 'opt:start_minimized', 'Start minimized to tray', 'Oxide opens in the tray, without a window.'],
+    ['hideMenu', 'opt:hide_menu', 'Hide menu', 'Hides the menus in the title bar; press Alt to show them.'],
+    ['overrideUserAgent', 'opt:override_user_agent', 'Use Chrome user agent', 'Can help with Google sign-in. Reloads the player.'],
+  ];
+
+  function el(tag, attrs = {}, children = []) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'html') e.innerHTML = v;
+      else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+      else e.setAttribute(k, v);
+    }
+    e.append(...children);
+    return e;
+  }
+
+  function switchRow(name, hint, checked, onChange) {
+    const input = el('input', { type: 'checkbox', 'aria-label': name });
+    input.checked = checked;
+    input.addEventListener('change', () => onChange(input.checked));
+    return el('div', { class: 'row' }, [
+      el('div', { class: 'what' }, [el('div', { class: 'name' }, [name]), ...(hint ? [el('div', { class: 'hint' }, [hint])] : [])]),
+      el('label', { class: 'switch' }, [input, el('span')]),
+    ]);
+  }
+
+  // A row of colour swatches plus a custom picker. `pick(value)` is called
+  // with the chosen colour; `update(value)` marks the current one.
+  function swatches(container, label, rainbow, pick) {
+    const list = COLORS.filter(([v]) => rainbow || v !== 'rainbow');
+    for (const [value, name, paint] of list) {
+      const b = el('button', { class: 'swatch' + (value === 'cover' ? ' cover' : ''), 'data-value': value, title: name, 'aria-label': label + ': ' + name, 'aria-pressed': 'false', style: `background:${paint}`, onclick: () => pick(value) });
+      if (value === 'cover') b.innerHTML = COVER_ICON;
+      container.append(b);
+    }
+    const input = el('input', { type: 'color', 'aria-label': label + ': custom colour', value: '#ffffff' });
+    input.addEventListener('input', () => pick(input.value));
+    const custom = el('label', { class: 'custom-color' }, [input, 'Custom']);
+    container.append(custom);
+    return (value) => {
+      let known = false;
+      for (const b of container.querySelectorAll('.swatch')) {
+        const on = b.dataset.value === value;
+        known ||= on;
+        b.setAttribute('aria-pressed', String(on));
+      }
+      if (/^#[0-9a-f]{6}$/i.test(value)) input.value = value;
+      custom.classList.toggle('on', !known);
+    };
+  }
+
+  // ---- text and progress colours -------------------------------------------
+  const PART_COLORS = [['lyrics', 'Lyrics'], ['next', 'Next line'], ['title', 'Title'], ['progress', 'Progress bar']];
+  const COLOR_DEFAULTS = { lyrics: 'white', next: 'white', title: 'white', progress: 'white' };
+  const colorMarks = {};
+  let colorTimer = 0;
+  function setColor(part, value) {
+    state.overlay.settings.colors = { ...COLOR_DEFAULTS, ...state.overlay.settings.colors, [part]: value };
+    renderColors();
+    clearTimeout(colorTimer);
+    colorTimer = setTimeout(() => invoke('settings_set', { key: 'colors', value: state.overlay.settings.colors }), 80);
+  }
+  function renderColors() {
+    const c = { ...COLOR_DEFAULTS, ...state.overlay.settings.colors };
+    for (const [part] of PART_COLORS) colorMarks[part](c[part]);
+  }
+  for (const [part, label] of PART_COLORS) {
+    const row = el('div', { class: 'swatches', role: 'group', 'aria-label': label + ' colour' });
+    colorMarks[part] = swatches(row, label, false, (v) => setColor(part, v));
+    $('partColors').append(el('div', { class: 'color-row' }, [el('span', {}, [label]), row]));
+  }
+  $('colorDefaults').addEventListener('click', () => {
+    state.overlay.settings.colors = { ...COLOR_DEFAULTS };
+    renderColors();
+    invoke('settings_set', { key: 'colors', value: state.overlay.settings.colors });
+  });
+
+  // ---- visualizer look, saved a moment after the last change --------------
+  let vizTimer = 0;
+  function setViz(patch) {
+    state.overlay.settings.viz = { ...state.overlay.settings.viz, ...patch };
+    renderViz();
+    clearTimeout(vizTimer);
+    vizTimer = setTimeout(() => invoke('settings_set', { key: 'viz', value: state.overlay.settings.viz }), 80);
+  }
+
+  function renderViz() {
+    const v = { ...VIZ_DEFAULTS, ...state.overlay.settings.viz };
+    for (const b of $('styles').children) b.setAttribute('aria-pressed', String(b.dataset.value === v.style));
+    markVizColor(v.color);
+    const fmt = { bars: (x) => String(x), sensitivity: (x) => x.toFixed(2) + '×', opacity: (x) => Math.round(x * 100) + '%', smoothing: (x) => Math.round(x * 100) + '%' };
+    for (const k of ['bars', 'sensitivity', 'opacity', 'smoothing']) {
+      if (document.activeElement !== $(k)) $(k).value = v[k];
+      $(k + 'Out').textContent = fmt[k](Number(v[k]));
+    }
+  }
+
+  function render() {
+    const o = state.overlay, s = o.settings;
+    $('open').checked = o.open;
+    $('clickThrough').checked = s.clickThrough;
+    const order = ['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right'];
+    const presets = [...o.presets].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    $('presets').replaceChildren(...presets.map((p) => {
+      const b = el('button', { 'aria-pressed': String(s.preset === p.id), onclick: () => click('ovl:pos:' + p.id) }, [p.label]);
+      return b;
+    }));
+    $('edit').textContent = o.editing ? 'Finish editing' : 'Edit layout';
+    $('reset').disabled = !s.layout;
+    $('layoutStatus').textContent = s.layout ? 'Using your own layout.' : 'Automatic layout.';
+    const parts = o.parts.map((p) => switchRow(p.label, '', !!s['show' + p.id[0].toUpperCase() + p.id.slice(1)],
+      (on) => invoke('settings_set', { key: 'part', id: p.id, value: on })));
+    $('parts').replaceChildren(...parts);
+    renderViz();
+    renderColors();
+    $('general').replaceChildren(...OPTIONS.map(([key, id, name, hint]) => switchRow(name, hint, !!state.options[key], () => click(id))));
+    $('version').textContent = 'Oxide ' + state.version;
+  }
+
+  // Build the fixed controls once.
+  $('styles').append(...STYLES.map(([value, label, icon]) => {
+    const b = el('button', { 'data-value': value, 'aria-pressed': 'false', onclick: () => setViz({ style: value }) });
+    b.innerHTML = `<svg viewBox="0 0 18 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">${icon}</svg>`;
+    b.append(label);
+    return b;
+  }));
+  const markVizColor = swatches($('colors'), 'Visualizer', true, (v) => setViz({ color: v }));
+  for (const k of ['bars', 'sensitivity', 'opacity', 'smoothing']) {
+    $(k).addEventListener('input', () => setViz({ [k]: k === 'bars' ? parseInt($(k).value, 10) : parseFloat($(k).value) }));
+  }
+  $('vizDefaults').addEventListener('click', () => setViz({ ...VIZ_DEFAULTS }));
+  $('open').addEventListener('change', () => click('ovl:toggle'));
+  $('clickThrough').addEventListener('change', () => invoke('settings_set', { key: 'clickThrough', value: $('clickThrough').checked }));
+  $('edit').addEventListener('click', () => click('ovl:edit'));
+  $('reset').addEventListener('click', () => click('ovl:reset-layout'));
+
+  async function load() {
+    state = await invoke('settings_get');
+    render();
+  }
+  // Called by the app when something changed elsewhere.
+  let refreshTimer = 0;
+  window.refreshSettings = () => { clearTimeout(refreshTimer); refreshTimer = setTimeout(load, 50); };
+  load();
+</script>
+</body>
+</html>

@@ -21,6 +21,7 @@
     "allow-window-control",
     "allow-page-reply",
     "allow-http-get",
-    "allow-pip-toggle"
+    "allow-pip-toggle",
+    "allow-overlay-levels"
   ]
 }

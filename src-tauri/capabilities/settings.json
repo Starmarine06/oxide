@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "description": "The Settings window: reads and changes app and on-screen lyrics settings",
+  "windows": [
+    "settings"
+  ],
+  "permissions": [
+    "allow-settings-get",
+    "allow-settings-set",
+    "allow-menu-click"
+  ]
+}

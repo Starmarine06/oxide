@@ -6,41 +6,218 @@
 <style>
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; cursor: default; }
   body {
-    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-    padding: 0 24px 10px; box-sizing: border-box; text-align: center;
     font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: #fff;
+    --now: 38px; --next: 22px; --meta: 15px;
+    --c-lyrics: #fff; --c-next: #fff; --c-title: #fff; --c-progress: #fff;
   }
-  .line {
-    max-width: 100%; transition: opacity .25s ease, transform .25s ease;
+  /* The window covers the whole screen; in the automatic layout the parts
+     sit together in .card, placed at the chosen spot. */
+  .card {
+    position: absolute; box-sizing: border-box; padding: 10px 24px 12px;
+    display: flex; align-items: flex-end; justify-content: center; gap: 18px;
+    border-radius: 12px; transition: background .2s ease, box-shadow .2s ease;
+  }
+  body.align-left .card { justify-content: flex-start; }
+  /* row-reverse puts the cover on the right; flex-start then packs to the right edge. */
+  body.align-right .card { flex-direction: row-reverse; justify-content: flex-start; }
+
+  /* Click-through off: hovering the parts shows a backdrop and buttons. */
+  body.movable.hover:not(.custom) .card { background: rgba(14, 14, 16, .55); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); cursor: grab; }
+  body.movable.hover.custom .part { background: rgba(14, 14, 16, .4); border-radius: 6px; cursor: grab; }
+  .tools { position: absolute; display: none; gap: 4px; z-index: 8; }
+  body.movable.hover:not(.editing) .tools { display: flex; }
+  .btn {
+    width: 28px; height: 28px; border: 0; border-radius: 6px; padding: 0; display: grid; place-items: center;
+    background: rgba(20,20,22,.85); color: #fff; cursor: pointer; box-shadow: 0 0 0 1px rgba(255,255,255,.12);
+  }
+  .btn:hover { background: rgba(60,60,64,.95); }
+  .btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+  .cover {
+    flex: none; width: min(120px, calc(var(--card-h, 170px) - 24px)); aspect-ratio: 1; border-radius: 6px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08); background: rgba(255,255,255,.06);
+    align-self: center; position: relative; z-index: 1;
+  }
+  /* Rounded on the image itself: clipping the part would hide its turn knob. */
+  .cover img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
+  .cover img:not([src]) { visibility: hidden; }
+
+  .text {
+    min-width: 0; max-width: 100%; display: flex; flex-direction: column; align-items: center; text-align: center;
+    position: relative; z-index: 1;
+  }
+  body.align-left .text { align-items: flex-start; text-align: left; }
+  body.align-right .text { align-items: flex-end; text-align: right; }
+  .shadowed {
     text-shadow: 0 0 2px #000, 0 0 6px rgba(0,0,0,.9), 0 2px 12px rgba(0,0,0,.7);
     -webkit-text-stroke: .6px rgba(0,0,0,.55);
-    display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
   }
-  #now { font-size: 38px; font-weight: 700; line-height: 1.2; -webkit-line-clamp: 2; }
-  #next { font-size: 22px; font-weight: 600; line-height: 1.3; opacity: .6; margin-top: 6px; -webkit-line-clamp: 1; min-height: 1.3em; }
+  #lyrics { position: relative; max-width: 100%; display: flex; flex-direction: column; align-items: inherit; }
+  .line { max-width: 100%; transition: opacity .25s ease, transform .25s ease; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+  #meta { position: relative; font-size: var(--meta); font-weight: 600; opacity: .85; margin-bottom: 4px; max-width: 100%; }
+  #metaText { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--c-title); }
+  #now { color: var(--c-lyrics); font-size: var(--now); font-weight: 700; line-height: 1.2; -webkit-line-clamp: 2; }
+  #next { color: var(--c-next); font-size: var(--next); font-weight: 600; line-height: 1.3; opacity: .6; margin-top: 6px; -webkit-line-clamp: 1; min-height: 1.3em; }
   .fade { opacity: 0 !important; transform: translateY(6px); }
-  .dim { opacity: .75; font-size: 26px !important; font-weight: 600 !important; }
+  .dim { opacity: .75; font-size: calc(var(--now) * .7) !important; font-weight: 600 !important; }
+
+  .progress { position: relative; width: min(420px, 100%); height: 13px; margin-top: 2px; display: flex; align-items: center; }
+  .progress .track { width: 100%; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--c-progress) 24%, transparent); overflow: hidden; box-shadow: 0 0 6px rgba(0,0,0,.6); }
+  .progress i { display: block; height: 100%; width: 0; background: var(--c-progress); border-radius: 2px; }
+
+  .viz { position: absolute; left: 0; right: 0; bottom: 0; height: 45%; z-index: 0; }
+  .viz canvas { width: 100%; height: 100%; display: block; pointer-events: none; }
+  /* Flip: only the bars or the fill turn over, never the label or knob. */
+  .viz.flipped canvas { transform: scaleY(-1); }
+  .progress.flipped .track { transform: scaleX(-1); }
+  [hidden] { display: none !important; }
+
+  /* ---- placed by hand, anywhere on the screen --------------------------------- */
+  body.custom .card { inset: 0; display: block; padding: 0; border-radius: 0; }
+  body.custom .text { display: contents; }
+  body.custom .part { position: absolute; box-sizing: border-box; margin: 0; max-width: none; z-index: 2; transform-origin: 50% 50%; }
+  body.custom .viz { z-index: 1; }
+  body.custom .cover { align-self: auto; aspect-ratio: auto; }
+  body.custom #lyrics { justify-content: center; }
+  body.custom #meta { display: flex; flex-direction: column; justify-content: center; }
+  body.custom #metaText { max-width: 100%; }
+  body.custom .progress { width: auto; }
+  body.custom #lyrics[data-align="left"], body.custom #meta[data-align="left"] { text-align: left; align-items: flex-start; }
+  body.custom #lyrics[data-align="center"], body.custom #meta[data-align="center"] { text-align: center; align-items: center; }
+  body.custom #lyrics[data-align="right"], body.custom #meta[data-align="right"] { text-align: right; align-items: flex-end; }
+
+  /* ---- edit mode ---------------------------------------------------------------- */
+  body.editing { background: rgba(0, 0, 0, .28); }
+  body.editing .part { outline: 1.5px dashed rgba(255,255,255,.8); outline-offset: -1px; background-color: rgba(255,255,255,.06); cursor: move; }
+  body.editing .part.active { outline-style: solid; outline-color: #fff; z-index: 4; }
+  .label, .grip, .aligns, .turn, .flipper { display: none; }
+  body.editing .label {
+    display: block; position: absolute; top: 3px; left: 3px; padding: 2px 6px; border-radius: 4px;
+    background: #fff; color: #111; font: 600 10px/1.3 "Segoe UI", system-ui, sans-serif; text-shadow: none; -webkit-text-stroke: 0;
+    pointer-events: none; white-space: nowrap; letter-spacing: .02em; opacity: 1;
+  }
+  body.editing #vizBox .label { top: auto; left: auto; bottom: 3px; right: 18px; }
+  body.editing .grip {
+    display: block; position: absolute; right: -1px; bottom: -1px; width: 14px; height: 14px; cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 50%, #fff 50%); border-bottom-right-radius: 2px;
+  }
+  /* Rotate handle: a knob on a stem above the part. */
+  body.editing .turn {
+    display: block; position: absolute; left: 50%; top: -26px; width: 16px; height: 16px; margin-left: -8px;
+    border-radius: 50%; background: #fff; cursor: grab; box-shadow: 0 1px 4px rgba(0,0,0,.5);
+  }
+  body.editing .turn::after { content: ""; position: absolute; left: 7px; top: 16px; width: 2px; height: 10px; background: #fff; }
+  /* Near the top of the screen the knob goes underneath instead. */
+  body.editing .part.knob-below .turn { top: auto; bottom: -26px; }
+  body.editing .part.knob-below .turn::after { top: -10px; }
+  body.editing .aligns { display: flex; position: absolute; top: 3px; right: 3px; gap: 2px; opacity: 1; }
+  .aligns button {
+    width: 20px; height: 18px; border: 0; padding: 0; border-radius: 3px; background: rgba(0,0,0,.65); color: #fff; cursor: pointer;
+    display: grid; place-items: center;
+  }
+  .aligns button[aria-pressed="true"] { background: #fff; color: #111; }
+  body.editing .flipper {
+    display: flex; align-items: center; gap: 4px; position: absolute; top: 3px; right: 3px; height: 18px; padding: 0 6px;
+    border: 0; border-radius: 3px; background: rgba(0,0,0,.65); color: #fff; cursor: pointer;
+    font: 600 10px/1 "Segoe UI", system-ui, sans-serif;
+  }
+  body.editing .flipper[aria-pressed="true"] { background: #fff; color: #111; }
+  .flipper svg { width: 11px; height: 11px; stroke: currentColor; stroke-width: 1.6; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  /* The progress bar is thin: its button sits above it, beside the knob. */
+  body.editing #progress .flipper { top: -22px; right: 0; }
+  .aligns svg { width: 12px; height: 10px; stroke: currentColor; stroke-width: 1.6; fill: none; stroke-linecap: round; }
+  .angle {
+    display: none; position: absolute; z-index: 9; padding: 3px 7px; border-radius: 4px; background: #111; color: #fff;
+    font: 600 11px/1.2 "Segoe UI", system-ui, sans-serif; pointer-events: none; box-shadow: 0 0 0 1px rgba(255,255,255,.2);
+  }
+  .editbar {
+    display: none; position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 9;
+    align-items: center; gap: 8px; padding: 6px 6px 6px 14px; border-radius: 10px;
+    background: rgba(20,20,22,.95); box-shadow: 0 6px 24px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.14);
+    font: 500 13px/1 "Segoe UI", system-ui, sans-serif; white-space: nowrap;
+  }
+  body.editing .editbar { display: flex; }
+  .editbar span { opacity: .85; }
+  .editbar button { height: 28px; padding: 0 12px; border: 0; border-radius: 6px; font: 600 13px/1 "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+  .editbar .ghost { background: rgba(255,255,255,.12); color: #fff; }
+  .editbar .ghost:hover { background: rgba(255,255,255,.22); }
+  .editbar .primary { background: #fff; color: #111; }
+  .guide { position: absolute; background: #38bdf8; z-index: 9; pointer-events: none; display: none; }
+  .guide.v { top: 0; bottom: 0; width: 1px; }
+  .guide.h { left: 0; right: 0; height: 1px; }
 </style>
 </head>
-<body>
-<div id="now" class="line"></div>
-<div id="next" class="line"></div>
+<body class="align-center">
+<div class="card" id="card">
+  <div class="part cover" id="cover" data-part="cover" hidden><img id="coverImg" alt=""></div>
+  <div class="text">
+    <div id="meta" class="part shadowed" data-part="title" hidden><span id="metaText"></span></div>
+    <div id="lyrics" class="part" data-part="lyrics">
+      <div id="now" class="line shadowed"></div>
+      <div id="next" class="line shadowed"></div>
+    </div>
+    <div class="part progress" id="progress" data-part="progress" hidden><div class="track"><i id="progressFill"></i></div></div>
+  </div>
+  <div class="part viz" id="vizBox" data-part="visualizer" hidden><canvas id="viz"></canvas></div>
+</div>
+<div class="tools" id="tools">
+  <button class="btn" id="edit" title="Edit layout" aria-label="Edit layout">
+    <svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>
+  </button>
+  <button class="btn" id="settings" title="Settings" aria-label="Settings">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+  </button>
+  <button class="btn" id="lock" title="Lock (clicks go through)" aria-label="Lock">
+    <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+  </button>
+  <button class="btn" id="close" title="Hide lyrics" aria-label="Hide lyrics">
+    <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+</div>
+<div class="editbar" id="editbar">
+  <span>Drag to move · corner to resize · knob to turn</span>
+  <button class="ghost" id="reset">Reset</button>
+  <button class="primary" id="done">Done</button>
+</div>
+<div class="angle" id="angle"></div>
+<div class="guide v" id="guideV"></div>
+<div class="guide h" id="guideH"></div>
 <script>
-  // Driven from Rust via eval: oxide.set(...) for lyrics, oxide.sync(...) for the clock.
-  const now = document.getElementById('now');
-  const next = document.getElementById('next');
-  let lines = [], message = '', hideTimer = 0, clock = { at: 0, base: 0, paused: true }, shown = -2;
+  // Driven from Rust via eval: oxide.settings(...), oxide.song(...),
+  // oxide.set(...) for lyrics, oxide.sync(...) for the clock and
+  // oxide.levels(...) for the visualizer.
+  const $ = (id) => document.getElementById(id);
+  const now = $('now'), next = $('next'), card = $('card');
+  let lines = [], message = '', hideTimer = 0, shown = -2, shownText = null;
+  let clock = { at: 0, base: 0, paused: true, song: 0, duration: 0 };
+  let opts = { showNext: true, align: 'center', viz: {} };
+  let group = { x: 0, y: 0, w: 800, h: 170 };   // automatic layout's spot, window px
+  let layout = null;          // { part: {x, y, w, h, rot, align} } in fractions of the screen
+  let editing = false;
+  let songTitle = '';
+  let coverRGB = null;        // [r, g, b] of the album cover, when known
+  const invoke = (cmd, args) => window.__TAURI_INTERNALS__?.invoke(cmd, args);
+
+  // Each part, and whether it shows (while editing, turned-on parts show
+  // even with nothing to fill them, so they can be placed).
+  const PARTS = {
+    cover: { el: $('cover'), label: 'Cover art', on: () => opts.showCover && (editing || !!$('coverImg').getAttribute('src')) },
+    title: { el: $('meta'), label: 'Title', text: true, on: () => opts.showTitle && (editing || !!songTitle) },
+    lyrics: { el: $('lyrics'), label: 'Lyrics', text: true, on: () => true },
+    progress: { el: $('progress'), label: 'Progress', flips: 'Fill from the other end', on: () => opts.showProgress },
+    visualizer: { el: $('vizBox'), label: 'Visualizer', flips: 'Bars grow from the other side', on: () => opts.showVisualizer },
+  };
 
   // Run ahead of the last report by at most 1.5 s. The app reports every
   // second, so a stall (buffering, a loading track) freezes the lyrics
   // instead of letting them run on without the music.
-  function position() {
-    if (clock.paused) return clock.base;
-    return clock.base + Math.min(1.5, (performance.now() - clock.at) / 1000);
-  }
+  const ahead = () => (clock.paused ? 0 : Math.min(1.5, (performance.now() - clock.at) / 1000));
+  const position = () => clock.base + ahead();
 
   function show(a, b, dim) {
-    if (now.textContent === a && next.textContent === b) return;
+    const key = a + '\n' + b + '\n' + !!dim;
+    if (shownText === key) return;
+    shownText = key;
     now.classList.add('fade');
     setTimeout(() => {
       now.textContent = a;
@@ -52,20 +229,535 @@
 
   function render() {
     if (!lines.length) {
-      if (shown !== -1) { shown = -1; show(message, '', true); }
+      if (message || !editing) show(message, '', true);
+      else show('Lyrics appear here', opts.showNext ? 'and the next line here' : '', false);
+      shown = -1;
+    } else {
+      const t = position();
+      let idx = -1;
+      for (let i = 0; i < lines.length && lines[i][0] <= t; i++) idx = i;
+      if (idx !== shown) {
+        shown = idx;
+        const cur = idx >= 0 ? lines[idx][1] : '';
+        const upcoming = opts.showNext && lines[idx + 1] ? lines[idx + 1][1] : '';
+        show(cur || '♪', upcoming, !cur);
+      }
+    }
+    if (clock.duration > 0) {
+      const p = Math.min(1, (clock.song + ahead()) / clock.duration);
+      $('progressFill').style.width = (p * 100).toFixed(2) + '%';
+    } else if (editing) {
+      $('progressFill').style.width = '40%';
+    }
+  }
+
+  // ---- colours ----------------------------------------------------------------------
+  const hexRGB = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  // A cover's average is often murky; lift it so it reads over anything.
+  function vivid([r, g, b], minL) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l0 = (max + min) / 2, d = max - min;
+    let h = 0, s0 = d === 0 ? 0 : d / (1 - Math.abs(2 * l0 - 1));
+    if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    const s = s0 < 0.06 ? s0 : Math.max(s0, 0.55), l = Math.min(0.86, Math.max(l0, minL));
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h % 6) + 6) % 6 % 2 - 1)), m = l - c / 2;
+    const hh = ((h % 6) + 6) % 6;
+    const [r1, g1, b1] = hh < 1 ? [c, x, 0] : hh < 2 ? [x, c, 0] : hh < 3 ? [0, c, x] : hh < 4 ? [0, x, c] : hh < 5 ? [x, 0, c] : [c, 0, x];
+    return [r1 + m, g1 + m, b1 + m].map((v) => Math.round(v * 255));
+  }
+  // A colour setting as [r, g, b]: "white", "accent", "cover" or "#rrggbb".
+  function rgbOf(name, minL) {
+    if (name === 'accent') return [232, 100, 44];
+    if (name === 'cover') return coverRGB ? vivid(coverRGB, minL) : [255, 255, 255];
+    if (/^#[0-9a-f]{6}$/i.test(name || '')) return hexRGB(name);
+    return [255, 255, 255];
+  }
+  function applyColors() {
+    const c = { lyrics: 'white', next: 'white', title: 'white', progress: 'white', ...(opts.colors || {}) };
+    const st = document.body.style;
+    for (const k of ['lyrics', 'next', 'title', 'progress']) st.setProperty('--c-' + k, `rgb(${rgbOf(c[k], 0.72).join(',')})`);
+  }
+  // Average colour of the cover, measured from the image when the server
+  // allows it (downloaded songs bring theirs along).
+  function measureCover(url) {
+    const probe = new Image();
+    probe.crossOrigin = 'anonymous';
+    probe.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = c.height = 8;
+        const x = c.getContext('2d');
+        x.drawImage(probe, 0, 0, 8, 8);
+        const d = x.getImageData(0, 0, 8, 8).data;
+        let r = 0, g = 0, b = 0;
+        for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+        coverRGB = [r, g, b].map((v) => Math.round(v / 64));
+        applyColors();
+      } catch (_) { /* the server didn't allow reading it */ }
+    };
+    probe.src = url;
+  }
+
+  // ---- layout ---------------------------------------------------------------------
+  function visibility() {
+    for (const p of Object.values(PARTS)) p.el.hidden = !p.on();
+    $('next').hidden = !opts.showNext;
+    $('metaText').textContent = songTitle || (editing ? 'Song title · Artist' : '');
+  }
+
+  // Where a part goes when there's no layout yet, or it's turned on later:
+  // cover at the side of the usual spot, title, lyrics and progress
+  // stacked beside it, visualizer along its bottom. Mirrored when the
+  // lyrics sit on the right.
+  function template() {
+    const W = innerWidth, H = innerHeight, G = group;
+    const right = opts.align === 'right';
+    const cover = PARTS.cover.on(), title = PARTS.title.on();
+    const coverH = 0.8, coverW = Math.min(0.3, (coverH * G.h) / G.w);
+    const tx = cover ? 0.02 + coverW + 0.02 : 0.04, tw = 0.96 - tx;
+    const align = cover ? (right ? 'right' : 'left') : (opts.align || 'center');
+    const inGroup = {
+      cover: { x: 0.02, y: 0.1, w: coverW, h: coverH },
+      title: { x: tx, y: 0.06, w: tw, h: 0.16, align },
+      lyrics: { x: tx, y: title ? 0.24 : 0.1, w: tw, h: title ? 0.5 : 0.64, align },
+      progress: { x: tx, y: 0.8, w: tw * 0.6, h: 0.08 },
+      visualizer: { x: 0, y: 0.55, w: 1, h: 0.45 },
+    };
+    const out = {};
+    for (const [n, b] of Object.entries(inGroup)) {
+      if (right) b.x = 1 - b.x - b.w;
+      out[n] = { x: (G.x + b.x * G.w) / W, y: (G.y + b.y * G.h) / H, w: (b.w * G.w) / W, h: (b.h * G.h) / H, rot: 0, ...(b.align ? { align: b.align } : {}) };
+    }
+    return out;
+  }
+
+  function boxFor(part) {
+    return layout?.[part] ? { rot: 0, ...layout[part] } : { ...template()[part] };
+  }
+
+  // Place parts by hand, or let them flow inside .card (no layout).
+  function applyLayout() {
+    document.body.classList.toggle('custom', !!layout);
+    const cs = card.style;
+    if (!layout) {
+      cs.left = group.x + 'px'; cs.top = group.y + 'px'; cs.width = group.w + 'px'; cs.height = group.h + 'px';
+      document.body.style.setProperty('--card-h', group.h + 'px');
+    } else {
+      cs.left = cs.top = cs.width = cs.height = '';
+    }
+    for (const [name, p] of Object.entries(PARTS)) {
+      const s = p.el.style;
+      if (!layout) {
+        s.left = s.top = s.width = s.height = s.transform = '';
+        delete p.el.dataset.align;
+        p.el.classList.remove('flipped');
+        continue;
+      }
+      const b = boxFor(name);
+      if (name === 'cover') {
+        // Square, whatever the screen's shape.
+        const side = Math.min(b.w * innerWidth, b.h * innerHeight);
+        b.w = side / innerWidth; b.h = side / innerHeight;
+      }
+      s.left = (b.x * 100) + '%'; s.top = (b.y * 100) + '%';
+      s.width = (b.w * 100) + '%'; s.height = (b.h * 100) + '%';
+      s.transform = b.rot ? `rotate(${b.rot}deg)` : '';
+      p.el.classList.toggle('flipped', !!b.flip);
+      p.el.querySelector('.flipper')?.setAttribute('aria-pressed', String(!!b.flip));
+      p.el.classList.toggle('knob-below', (b.y + b.h / 2) * innerHeight - extents(b).hy < 64);
+      if (p.text) p.el.dataset.align = b.align || opts.align || 'center';
+    }
+    fitText();
+    for (const b of document.querySelectorAll('.aligns button')) {
+      const part = b.closest('.part').dataset.part;
+      b.setAttribute('aria-pressed', String((layout?.[part]?.align || opts.align || 'center') === b.dataset.align));
+    }
+    placeTools();
+    reportHits();
+  }
+
+  // Text is sized from its box (hand-placed) or the spot's height.
+  function fitText() {
+    const st = document.body.style;
+    const lh = layout ? $('lyrics').clientHeight : group.h;
+    const nowPx = layout
+      ? Math.max(12, Math.min(140, lh * (opts.showNext ? 0.3 : 0.41)))
+      : Math.max(18, Math.min(38, group.h * 0.22));
+    st.setProperty('--now', nowPx + 'px');
+    st.setProperty('--next', Math.max(10, nowPx * 0.58) + 'px');
+    st.setProperty('--meta', (layout ? Math.max(9, Math.min(40, $('meta').clientHeight * 0.62)) : Math.max(11, Math.min(15, group.h * 0.08))) + 'px');
+  }
+
+  // Bounding box of what's showing, window px.
+  function bounds() {
+    if (!layout) return { left: group.x, top: group.y, right: group.x + group.w, bottom: group.y + group.h };
+    let r = null;
+    for (const p of Object.values(PARTS)) {
+      if (p.el.hidden) continue;
+      const b = p.el.getBoundingClientRect();
+      r = r ? { left: Math.min(r.left, b.left), top: Math.min(r.top, b.top), right: Math.max(r.right, b.right), bottom: Math.max(r.bottom, b.bottom) }
+            : { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+    }
+    return r || { left: 0, top: 0, right: 0, bottom: 0 };
+  }
+
+  // Buttons at the top-right of what's showing (below it near the top edge).
+  function placeTools() {
+    const b = bounds(), t = $('tools').style, w = 4 * 28 + 3 * 4;
+    const x = b.right - w - 8;
+    const y = b.top < 44 ? Math.min(b.bottom + 6, innerHeight - 34) : b.top + 8;
+    t.left = Math.max(4, Math.min(innerWidth - w - 4, x)) + 'px';
+    t.top = Math.max(4, y) + 'px';
+  }
+
+  // Tell the app where the parts are: with click-through off, the window
+  // takes clicks only there (and on the buttons while they show).
+  let hitTimer = 0;
+  function reportHits() {
+    clearTimeout(hitTimer);
+    hitTimer = setTimeout(() => {
+      const rects = [];
+      const add = (r) => rects.push([r.left, r.top, r.right - r.left, r.bottom - r.top]);
+      if (!layout) add(card.getBoundingClientRect());
+      else for (const p of Object.values(PARTS)) if (!p.el.hidden) add(p.el.getBoundingClientRect());
+      if (document.body.classList.contains('hover')) add($('tools').getBoundingClientRect());
+      invoke('overlay_hit_rects', { rects });
+    }, 60);
+  }
+
+  // Hover: the window only gets the pointer over the parts, so leaving can
+  // go unseen; drop the hover state shortly after the last movement.
+  let hoverTimer = 0;
+  document.addEventListener('pointermove', () => {
+    if (!document.body.classList.contains('movable') || editing) return;
+    if (!document.body.classList.contains('hover')) { document.body.classList.add('hover'); reportHits(); }
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => { document.body.classList.remove('hover'); reportHits(); }, 1500);
+  });
+
+  const save = (done) => invoke('overlay_save_layout', { layout, done });
+
+  // ---- editing: move, resize, turn, snap ----------------------------------------------
+  for (const p of Object.values(PARTS)) {
+    p.el.insertAdjacentHTML('beforeend', `<span class="label">${p.label}</span><span class="grip"></span><span class="turn" title="Drag to turn"></span>`);
+    if (p.flips) {
+      p.el.insertAdjacentHTML('beforeend', `<button class="flipper" title="${p.flips}" aria-pressed="false"><svg viewBox="0 0 12 12"><path d="M3 1v10M3 1L1 3M3 1l2 2M9 11V1M9 11l-2-2M9 11l2-2"/></svg>Flip</button>`);
+    }
+    if (p.text) {
+      const icons = { left: 'M1 2h10M1 5h6M1 8h8', center: 'M1 2h10M3 5h6M2 8h8', right: 'M1 2h10M5 5h6M3 8h8' };
+      p.el.insertAdjacentHTML('beforeend', '<span class="aligns">' + ['left', 'center', 'right'].map((a) =>
+        `<button data-align="${a}" title="Align ${a}"><svg viewBox="0 0 12 10"><path d="${icons[a]}"/></svg></button>`).join('') + '</span>');
+    }
+  }
+
+  const SNAP = 6;
+  // Pull a part's start, middle or end onto a nearby target line.
+  function snap(start, size, targets) {
+    let best = null;
+    for (const t of targets) {
+      for (const offset of [0, size / 2, size]) {
+        const d = t - (start + offset);
+        if (Math.abs(d) <= SNAP && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, at: t };
+      }
+    }
+    return best ? { value: start + best.d, at: best.at } : { value: start, at: null };
+  }
+  function guide(id, at, vertical) {
+    const g = $(id);
+    g.style.display = at == null ? 'none' : 'block';
+    if (at != null) g.style[vertical ? 'left' : 'top'] = at + 'px';
+  }
+  // Screen edges and middle, and the edges and middles of the other parts.
+  function targets(except) {
+    const W = innerWidth, H = innerHeight;
+    const xs = [0, W / 2, W], ys = [0, H / 2, H];
+    for (const [n, p] of Object.entries(PARTS)) {
+      if (n === except || p.el.hidden) continue;
+      const o = boxFor(n), { hx, hy } = extents(o);
+      const cx = (o.x + o.w / 2) * W, cy = (o.y + o.h / 2) * H;
+      xs.push(cx - hx, cx, cx + hx);
+      ys.push(cy - hy, cy, cy + hy);
+    }
+    return { xs, ys };
+  }
+  // Half the width and height of what a part covers on screen once turned.
+  function extents(b) {
+    const th = ((b.rot || 0) * Math.PI) / 180, c = Math.abs(Math.cos(th)), s = Math.abs(Math.sin(th));
+    const w = b.w * innerWidth, h = b.h * innerHeight;
+    return { hx: (w * c + h * s) / 2, hy: (w * s + h * c) / 2 };
+  }
+  // Keep what's visible of a part on the screen (its turned outline, not
+  // its unturned box), so a turned part can still reach every edge.
+  function clampBox(b) {
+    const W = innerWidth, H = innerHeight, { hx, hy } = extents(b);
+    let cx = (b.x + b.w / 2) * W, cy = (b.y + b.h / 2) * H;
+    cx = hx * 2 >= W ? W / 2 : Math.min(Math.max(cx, hx), W - hx);
+    cy = hy * 2 >= H ? H / 2 : Math.min(Math.max(cy, hy), H - hy);
+    return { ...b, x: cx / W - b.w / 2, y: cy / H - b.h / 2 };
+  }
+
+  // Turning snaps to quarter turns, and to every 15° close by.
+  function snapAngle(a) {
+    for (const q of [0, 90, -90, 180, -180]) if (Math.abs(a - q) <= 5) return q;
+    const s = Math.round(a / 15) * 15;
+    return Math.abs(a - s) <= 2.5 ? s : Math.round(a);
+  }
+
+  let drag = null;
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const alignBtn = e.target.closest('.aligns button');
+    if (editing && alignBtn) {
+      const part = alignBtn.closest('.part').dataset.part;
+      layout[part] = { ...boxFor(part), align: alignBtn.dataset.align };
+      applyLayout();
+      save(false);
       return;
     }
-    const t = position();
-    let idx = -1;
-    for (let i = 0; i < lines.length && lines[i][0] <= t; i++) idx = i;
-    if (idx === shown) return;
-    shown = idx;
-    const cur = idx >= 0 ? lines[idx][1] : '';
-    const upcoming = lines[idx + 1] ? lines[idx + 1][1] : '';
-    show(cur || '♪', upcoming, !cur);
+    const flipBtn = e.target.closest('.flipper');
+    if (editing && flipBtn) {
+      const part = flipBtn.closest('.part').dataset.part;
+      const b = boxFor(part);
+      layout[part] = { ...b, flip: !b.flip };
+      applyLayout();
+      save(false);
+      e.preventDefault();
+      return;
+    }
+    if (e.target.closest('.btn, .editbar')) return;
+    const partEl = e.target.closest('.part');
+    if (editing && partEl) {
+      const name = partEl.dataset.part;
+      const mode = e.target.closest('.grip') ? 'resize' : e.target.closest('.turn') ? 'turn' : 'move';
+      drag = { mode, name, el: partEl, x0: e.clientX, y0: e.clientY, box: boxFor(name), lines: targets(name) };
+      partEl.classList.add('active');
+      partEl.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+    // Click-through off: dragging any part moves everything together.
+    if (!editing && document.body.classList.contains('movable') && (partEl || e.target.closest('.card'))) {
+      drag = { mode: 'group', x0: e.clientX, y0: e.clientY, group: { ...group }, layout: layout && JSON.parse(JSON.stringify(layout)) };
+      document.body.setPointerCapture?.(e.pointerId);
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const W = innerWidth, H = innerHeight;
+    const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+    if (drag.mode === 'group') {
+      if (drag.layout) {
+        for (const [n, b] of Object.entries(drag.layout)) layout[n] = clampBox({ ...b, x: b.x + dx / W, y: b.y + dy / H });
+      } else {
+        group = { ...drag.group, x: Math.min(Math.max(0, drag.group.x + dx), W - drag.group.w), y: Math.min(Math.max(0, drag.group.y + dy), H - drag.group.h) };
+      }
+      applyLayout();
+      return;
+    }
+    const { box, lines: { xs, ys } } = drag;
+    const left = box.x * W, top = box.y * H, w0 = box.w * W, h0 = box.h * H;
+    let b;
+    if (drag.mode === 'turn') {
+      const cx = left + w0 / 2, cy = top + h0 / 2;
+      const deg = snapAngle((Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI + 90);
+      const rot = ((deg + 180) % 360 + 360) % 360 - 180;
+      b = clampBox({ ...box, rot });
+      const a = $('angle');
+      a.style.display = 'block'; a.textContent = Math.round(rot) + '°';
+      a.style.left = (e.clientX + 14) + 'px'; a.style.top = (e.clientY - 10) + 'px';
+    } else if (drag.mode === 'resize') {
+      // The drag in the part's own (turned) directions; the corner opposite
+      // the grip stays where it is.
+      const th = ((box.rot || 0) * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
+      let w = Math.max(24, w0 + dx * c + dy * s);
+      let h = Math.max(drag.name === 'progress' ? 8 : 20, h0 - dx * s + dy * c);
+      let gx = null, gy = null;
+      if (drag.name === 'cover') w = h = Math.max(w, h);
+      else if (!box.rot) {
+        const sx = snap(left + w, 0, xs), sy = snap(top + h, 0, ys);
+        w = sx.value - left; h = sy.value - top; gx = sx.at; gy = sy.at;
+      }
+      w = Math.min(w, W); h = Math.min(h, H);
+      const tlx = left + w0 / 2 - (c * w0 / 2 - s * h0 / 2), tly = top + h0 / 2 - (s * w0 / 2 + c * h0 / 2);
+      const ncx = tlx + c * w / 2 - s * h / 2, ncy = tly + s * w / 2 + c * h / 2;
+      b = clampBox({ ...box, x: (ncx - w / 2) / W, y: (ncy - h / 2) / H, w: w / W, h: h / H });
+      guide('guideV', gx, true); guide('guideH', gy, false);
+    } else {
+      // Snap and keep on screen what's visible: the turned outline.
+      const { hx, hy } = extents(box);
+      let cx = left + w0 / 2 + dx, cy = top + h0 / 2 + dy;
+      const sx = snap(cx - hx, hx * 2, xs), sy = snap(cy - hy, hy * 2, ys);
+      cx = sx.value + hx; cy = sy.value + hy;
+      b = clampBox({ ...box, x: (cx - w0 / 2) / W, y: (cy - h0 / 2) / H });
+      guide('guideV', sx.at, true); guide('guideH', sy.at, false);
+    }
+    layout[drag.name] = b;
+    applyLayout();
+  });
+
+  document.addEventListener('pointerup', () => {
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    d.el?.classList.remove('active');
+    guide('guideV', null, true); guide('guideH', null, false);
+    $('angle').style.display = 'none';
+    if (d.mode === 'group' && !layout) invoke('overlay_save_group', { x: group.x, y: group.y, width: group.w, height: group.h });
+    else save(false);
+  });
+
+  function startEditing() {
+    if (!layout) layout = template();
+    for (const name of Object.keys(PARTS)) if (!layout[name] && !PARTS[name].el.hidden) layout[name] = boxFor(name);
+    applyLayout();
+    save(false);
+  }
+
+  // ---- visualizer -------------------------------------------------------------
+  const canvas = $('viz'), g = canvas.getContext('2d');
+  let target = [], bars = [], lastLevels = 0, drawing = false;
+
+  // The 32 bands from the player, stretched or squeezed to `n`.
+  function resample(n) {
+    const out = new Array(n).fill(0);
+    if (!target.length) return out;
+    for (let i = 0; i < n; i++) {
+      const f = (i / Math.max(1, n - 1)) * (target.length - 1), a = Math.floor(f), t = f - a;
+      out[i] = ((target[a] || 0) * (1 - t) + (target[Math.min(target.length - 1, a + 1)] || 0) * t) / 255;
+    }
+    return out;
+  }
+
+  function colorFor(v, i, n, alpha) {
+    if (v.color === 'rainbow') return `hsla(${Math.round((i / n) * 300)}, 85%, 62%, ${alpha})`;
+    const [r, gg, b] = rgbOf(v.color, 0.6);
+    return `rgba(${r},${gg},${b},${alpha})`;
+  }
+
+  function draw() {
+    if ($('vizBox').hidden) { drawing = false; return; }
+    const v = { style: 'bars', color: 'white', bars: 32, sensitivity: 1, opacity: 0.35, smoothing: 0.6, ...(opts.viz || {}) };
+    const w = canvas.clientWidth, h = canvas.clientHeight, dpr = devicePixelRatio || 1;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    const n = Math.max(8, Math.min(96, v.bars | 0));
+    const stale = performance.now() - lastLevels > 400;
+    const levels = resample(n);
+    const t = performance.now() / 1000;
+    while (bars.length < n) bars.push(0);
+    bars.length = n;
+    const fall = 0.04 + (1 - v.smoothing) * 0.5;
+    for (let i = 0; i < n; i++) {
+      // While editing with nothing playing, a gentle sample so it can be placed.
+      const goal = stale ? (editing ? 0.4 + 0.3 * Math.sin(i / 3 + t) : 0) : Math.min(1, levels[i] * v.sensitivity);
+      bars[i] += (goal - bars[i]) * (goal > bars[i] ? 0.5 : fall);
+    }
+    const level = (i) => Math.max(0, bars[i]) ** 1.3;
+    const op = v.opacity;
+    const gap = n > 48 ? 1.5 : 3;
+
+    if (v.style === 'bars' || v.style === 'mirror') {
+      const bw = Math.max(1, (w - gap * (n - 1)) / n);
+      const mirror = v.style === 'mirror';
+      for (let i = 0; i < n; i++) {
+        const bh = level(i) * h;
+        if (bh < 1) continue;   // quiet: nothing, not a line along the bottom
+        const x = i * (bw + gap), y = mirror ? (h - bh) / 2 : h - bh;
+        const grad = g.createLinearGradient(0, mirror ? 0 : h, 0, mirror ? h : 0);
+        if (mirror) {
+          grad.addColorStop(0, colorFor(v, i, n, 0)); grad.addColorStop(0.5, colorFor(v, i, n, op)); grad.addColorStop(1, colorFor(v, i, n, 0));
+        } else {
+          grad.addColorStop(0, colorFor(v, i, n, op)); grad.addColorStop(1, colorFor(v, i, n, 0));
+        }
+        g.fillStyle = grad;
+        g.beginPath();
+        g.roundRect(x, y, bw, bh, Math.min(2, bw / 2));
+        g.fill();
+      }
+    } else if (v.style === 'wave') {
+      if (Math.max(...bars) < 0.02) { requestAnimationFrame(draw); return; }   // quiet: no flat line
+      const pts = [];
+      for (let i = 0; i < n; i++) pts.push([(i / (n - 1)) * w, h - level(i) * h * 0.92 - 2]);
+      g.beginPath();
+      g.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < n; i++) {
+        const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+        g.quadraticCurveTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
+      }
+      g.lineTo(w, pts[n - 1][1]);
+      const stroke = g.createLinearGradient(0, 0, w, 0);
+      for (let i = 0; i <= 6; i++) stroke.addColorStop(i / 6, colorFor(v, (i / 6) * n, n, Math.min(1, op * 2.2)));
+      g.strokeStyle = stroke; g.lineWidth = 2.5; g.lineJoin = 'round'; g.stroke();
+      g.lineTo(w, h); g.lineTo(0, h); g.closePath();
+      const fill = g.createLinearGradient(0, h, 0, 0);
+      fill.addColorStop(0, colorFor(v, n / 2, n, op * 0.8)); fill.addColorStop(1, colorFor(v, n / 2, n, 0));
+      g.fillStyle = fill; g.fill();
+    } else if (v.style === 'circle') {
+      const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.22, len = Math.min(w, h) * 0.26;
+      g.lineCap = 'round';
+      g.lineWidth = Math.max(1.5, Math.min(6, (2 * Math.PI * r) / n - 2));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 - Math.PI / 2, l = level(i) * len;
+        if (l < 1) continue;   // quiet: no ring of dots
+        g.strokeStyle = colorFor(v, i, n, Math.min(1, op * 1.8));
+        g.beginPath();
+        g.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+        g.lineTo(cx + Math.cos(a) * (r + l), cy + Math.sin(a) * (r + l));
+        g.stroke();
+      }
+    } else if (v.style === 'dots') {
+      const bw = Math.max(2, (w - gap * (n - 1)) / n), dot = Math.max(2, Math.min(bw, 10)), rows = Math.max(3, Math.floor(h / (dot + 2)));
+      for (let i = 0; i < n; i++) {
+        const lit = Math.round(level(i) * rows);
+        for (let k = 0; k < lit; k++) {
+          g.fillStyle = colorFor(v, i, n, Math.min(1, op * (0.45 + 0.55 * (k / rows)) * 1.6));
+          g.beginPath();
+          g.arc(i * (bw + gap) + bw / 2, h - k * (dot + 2) - dot / 2, dot / 2, 0, Math.PI * 2);
+          g.fill();
+        }
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+
+  function refresh() {
+    visibility();
+    applyLayout();
+    if (!$('vizBox').hidden && !drawing) { drawing = true; requestAnimationFrame(draw); }
+    shown = -2;
+    render();
   }
 
   window.oxide = {
+    settings(s) {
+      const wasEditing = editing;
+      opts = s;
+      editing = !!s.editing;
+      if (s.group && !drag) group = s.group;
+      if (!drag) layout = s.layout ? JSON.parse(JSON.stringify(s.layout)) : null;
+      document.body.classList.toggle('movable', !s.clickThrough);
+      if (s.clickThrough || editing) document.body.classList.remove('hover');
+      document.body.classList.toggle('editing', editing);
+      document.body.classList.remove('align-left', 'align-center', 'align-right');
+      document.body.classList.add('align-' + (['left', 'right'].includes(s.align) ? s.align : 'center'));
+      applyColors();
+      refresh();
+      if (editing && (!wasEditing || !layout)) startEditing();
+    },
+    song(s) {
+      songTitle = [s.title, s.artist].filter(Boolean).join(' · ');
+      const img = $('coverImg');
+      if (s.cover) img.src = s.cover; else img.removeAttribute('src');
+      coverRGB = /^#[0-9a-f]{6}$/i.test(s.color || '') ? hexRGB(s.color) : null;
+      if (!coverRGB && s.cover) measureCover(s.cover);
+      applyColors();
+      refresh();
+    },
     set(data) {
       lines = data.lines || [];
       message = data.message || '';
@@ -74,12 +766,27 @@
       shown = -2;
       render();
     },
-    sync(elapsed, paused) {
-      clock = { at: performance.now(), base: elapsed, paused };
+    sync(elapsed, paused, songTime, duration) {
+      clock = { at: performance.now(), base: elapsed, paused, song: songTime ?? elapsed, duration: duration || 0 };
       shown = -2;
       render();
     },
+    levels(values) {
+      target = values;
+      lastLevels = performance.now();
+    },
   };
+  $('coverImg').addEventListener('load', refresh);
+  $('coverImg').addEventListener('error', () => { $('coverImg').removeAttribute('src'); refresh(); });
+  addEventListener('resize', applyLayout);
+
+  $('edit').addEventListener('click', () => invoke('menu_click', { id: 'ovl:edit' }));
+  $('settings').addEventListener('click', () => invoke('menu_click', { id: 'ovl:settings' }));
+  $('lock').addEventListener('click', () => invoke('menu_click', { id: 'ovl:click-through' }));
+  $('close').addEventListener('click', () => invoke('menu_click', { id: 'ovl:close' }));
+  $('done').addEventListener('click', () => save(true));
+  $('reset').addEventListener('click', () => { layout = null; invoke('menu_click', { id: 'ovl:reset-layout' }); });
+
   setInterval(render, 100);
 </script>
 </body>

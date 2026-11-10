@@ -410,6 +410,9 @@
 
   // ---- state --------------------------------------------------------------
   const audio = new Audio();
+  // Songs come from Oxide's media protocol with CORS, so the visualizer can
+  // route them through Web Audio without silencing them.
+  audio.crossOrigin = 'anonymous';
   audio.preload = 'auto';
   let tracks = [];            // newest first
   let byId = new Map();
@@ -723,6 +726,47 @@
     const args = { volume: Math.round(level * 100), muted: audio.muted };
     if (t) Object.assign(args, { videoId: t.videoId, time: audio.currentTime || 0 });
     invoke('go_online', args).catch(() => { location.href = 'https://music.youtube.com/'; });
+  };
+
+  // Audio levels for the on-screen lyrics' visualizer (same shape as the
+  // YouTube Music page sends). The element is only routed through Web Audio
+  // once the audio context is running: a suspended context would silence it.
+  let levelsOn = false, levelCtx = null, analyser = null;
+  const startAnalyser = async () => {
+    if (analyser) return analyser;
+    levelCtx = levelCtx || new AudioContext({ latencyHint: 'playback' });
+    if (levelCtx.state !== 'running') await levelCtx.resume().catch(() => {});
+    if (levelCtx.state !== 'running') return null;
+    const source = levelCtx.createMediaElementSource(audio);
+    analyser = levelCtx.createAnalyser();
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0.72;
+    source.connect(levelCtx.destination);
+    source.connect(analyser);
+    return analyser;
+  };
+  window.__oxideLevels = async () => {
+    if (levelsOn) return;
+    levelsOn = true;
+    const BANDS = 32;
+    let bins = null;
+    const step = async () => {
+      const an = await startAnalyser();
+      const levels = new Array(BANDS).fill(0);
+      if (an) {
+        bins = bins || new Uint8Array(an.frequencyBinCount);
+        an.getByteFrequencyData(bins);
+        const nyquist = levelCtx.sampleRate / 2;
+        const edge = (i) => Math.min(bins.length - 1, Math.round((40 * (12000 / 40) ** (i / BANDS)) / nyquist * bins.length));
+        for (let b = 0; b < BANDS; b++) {
+          for (let i = edge(b), end = Math.max(edge(b), edge(b + 1) - 1); i <= end; i++) levels[b] = Math.max(levels[b], bins[i]);
+        }
+      }
+      let more = false;
+      try { more = await invoke('overlay_levels', { levels }); } catch (_) {}
+      if (more) setTimeout(step, 50); else levelsOn = false;
+    };
+    step();
   };
 
   // Arriving from YouTube Music: pick up the song that was on, at the same

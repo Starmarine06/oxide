@@ -16,6 +16,12 @@ fn main() {
             "pip_toggle",
             "offline_library",
             "go_online",
+            "overlay_levels",
+            "overlay_save_layout",
+            "overlay_save_group",
+            "overlay_hit_rects",
+            "settings_get",
+            "settings_set",
         ])),
     )
     .expect("failed to run tauri-build");

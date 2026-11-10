@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "lyrics-overlay",
+  "description": "The on-screen lyrics window: dragging it and its own buttons (lock, close)",
+  "windows": [
+    "lyrics-overlay"
+  ],
+  "permissions": [
+    "allow-menu-click",
+    "allow-overlay-save-layout",
+    "allow-overlay-save-group",
+    "allow-overlay-hit-rects"
+  ]
+}

@@ -41,6 +41,166 @@ pub struct Geometry {
     pub maximized: bool,
 }
 
+/// Where the on-screen lyrics sit, in logical pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// Where one part of the on-screen lyrics sits on the screen, as fractions
+/// (0 to 1) of the screen's work area, turned by `rot` degrees about its
+/// middle.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LayoutBox {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub rot: f64,
+    /// Visualizer bars grow from the other side; the progress bar fills
+    /// from the other end.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flip: bool,
+    /// Text alignment for the lyrics and title: "left", "center", "right".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub align: Option<String>,
+}
+
+/// How the on-screen visualizer looks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct VizSettings {
+    /// "bars", "mirror", "wave", "circle" or "dots".
+    pub style: String,
+    /// "white", "accent", "cover" (the album cover's colour), "rainbow" or
+    /// a "#rrggbb" colour.
+    pub color: String,
+    /// Number of bars (or points), 8 to 96.
+    pub bars: u32,
+    /// Level multiplier, 0.3 to 3.
+    pub sensitivity: f64,
+    /// 0.05 to 1.
+    pub opacity: f64,
+    /// How slowly bars fall back, 0 (instant) to 0.95.
+    pub smoothing: f64,
+}
+
+impl Default for VizSettings {
+    fn default() -> Self {
+        Self { style: "bars".into(), color: "white".into(), bars: 32, sensitivity: 1.0, opacity: 0.35, smoothing: 0.6 }
+    }
+}
+
+impl VizSettings {
+    /// Keep values from the settings page in range.
+    pub fn clean(mut self) -> Self {
+        if !["bars", "mirror", "wave", "circle", "dots"].contains(&self.style.as_str()) {
+            self.style = "bars".into();
+        }
+        if !valid_color(&self.color, true) {
+            self.color = "white".into();
+        }
+        self.bars = self.bars.clamp(8, 96);
+        self.sensitivity = if self.sensitivity.is_finite() { self.sensitivity.clamp(0.3, 3.0) } else { 1.0 };
+        self.opacity = if self.opacity.is_finite() { self.opacity.clamp(0.05, 1.0) } else { 0.35 };
+        self.smoothing = if self.smoothing.is_finite() { self.smoothing.clamp(0.0, 0.95) } else { 0.6 };
+        self
+    }
+}
+
+/// "white", "accent", "cover", a "#rrggbb" colour, or (where allowed)
+/// "rainbow".
+fn valid_color(c: &str, rainbow: bool) -> bool {
+    let hex = c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|ch| ch.is_ascii_hexdigit());
+    hex || ["white", "accent", "cover"].contains(&c) || (rainbow && c == "rainbow")
+}
+
+/// Colours of the on-screen lyrics' text and progress bar.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PartColors {
+    pub lyrics: String,
+    pub next: String,
+    pub title: String,
+    pub progress: String,
+}
+
+impl Default for PartColors {
+    fn default() -> Self {
+        Self { lyrics: "white".into(), next: "white".into(), title: "white".into(), progress: "white".into() }
+    }
+}
+
+impl PartColors {
+    pub fn clean(mut self) -> Self {
+        for c in [&mut self.lyrics, &mut self.next, &mut self.title, &mut self.progress] {
+            if !valid_color(c, false) {
+                *c = "white".into();
+            }
+        }
+        self
+    }
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
+/// The on-screen lyrics (desktop overlay).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct OverlaySettings {
+    /// Clicks go through to whatever is underneath. Off: it can be dragged,
+    /// resized and has its own buttons.
+    pub click_through: bool,
+    pub show_cover: bool,
+    pub show_title: bool,
+    pub show_next: bool,
+    pub show_progress: bool,
+    pub show_visualizer: bool,
+    /// Last preset picked ("bottom", "top-left", ...); cleared by dragging.
+    pub preset: Option<String>,
+    /// "left", "center" or "right", from where it sits on the screen.
+    pub align: String,
+    /// Where the automatic layout sits (logical screen pixels); None until
+    /// it's moved or a preset is picked.
+    pub rect: Option<Rect>,
+    /// Parts placed by hand in edit mode ("cover", "title", "lyrics",
+    /// "progress", "visualizer"); None uses the automatic layout.
+    pub layout: Option<std::collections::BTreeMap<String, LayoutBox>>,
+    /// The layout is in screen fractions. Layouts saved before the overlay
+    /// covered the whole screen were fractions of its old, smaller window;
+    /// those settings have no such field, so it reads as false for them.
+    #[serde(default)]
+    pub screen_layout: bool,
+    pub viz: VizSettings,
+    pub colors: PartColors,
+}
+
+impl Default for OverlaySettings {
+    fn default() -> Self {
+        Self {
+            click_through: true,
+            show_cover: false,
+            show_title: false,
+            show_next: true,
+            show_progress: false,
+            show_visualizer: false,
+            preset: Some("bottom".into()),
+            align: "center".into(),
+            rect: None,
+            layout: None,
+            screen_layout: true,
+            viz: VizSettings::default(),
+            colors: PartColors::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -48,6 +208,7 @@ pub struct Config {
     pub rev: u64,
     pub options: Options,
     pub window: Option<Geometry>,
+    pub overlay: OverlaySettings,
     /// Per-plugin settings keyed by plugin id. Every entry has an
     /// `enabled` bool plus whatever options that plugin defines.
     pub plugins: Map<String, Value>,

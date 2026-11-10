@@ -7,6 +7,7 @@ mod menu;
 mod overlay;
 mod player;
 mod plugins;
+mod settings_window;
 mod tray;
 mod updater;
 mod window;
@@ -65,6 +66,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| window::show(app)))
         .plugin(tauri_plugin_notification::init())
+        // Downloaded songs for the offline player (library::serve_media).
+        .register_asynchronous_uri_scheme_protocol("media", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || responder.respond(library::serve_media(&app, &request)));
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -85,6 +91,12 @@ pub fn run() {
             bridge::http_get,
             plugins::window_plugins::pip_toggle,
             library::offline_library,
+            overlay::overlay_levels,
+            overlay::overlay_save_layout,
+            overlay::overlay_save_group,
+            overlay::overlay_hit_rects,
+            settings_window::settings_get,
+            settings_window::settings_set,
             library::go_online,
         ])
         // Tray menu clicks.

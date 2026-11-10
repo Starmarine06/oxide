@@ -184,6 +184,25 @@ pub fn lyrics_for(app: &AppHandle, video_id: &str) -> Option<Lyrics> {
     read(app).into_iter().find(|t| t.video_id == video_id).and_then(|t| t.lyrics)
 }
 
+/// The saved cover of a downloaded song, as a URL local pages can load.
+pub fn cover_url(app: &AppHandle, video_id: &str) -> Option<String> {
+    let cover = {
+        let _guard = FILE_LOCK.lock().unwrap();
+        read(app).into_iter().find(|t| t.video_id == video_id)?.cover?
+    };
+    if !Path::new(&cover).is_file() {
+        return None;
+    }
+    let _ = app.asset_protocol_scope().allow_file(&cover);
+    Some(asset_url(&cover))
+}
+
+/// The average colour of a downloaded song's cover ("#rrggbb").
+pub fn color_for(app: &AppHandle, video_id: &str) -> Option<String> {
+    let _guard = FILE_LOCK.lock().unwrap();
+    read(app).into_iter().find(|t| t.video_id == video_id)?.color
+}
+
 /// Already downloaded, with the file still on disk.
 pub fn has(app: &AppHandle, video_id: &str) -> bool {
     let _guard = FILE_LOCK.lock().unwrap();
@@ -191,6 +210,104 @@ pub fn has(app: &AppHandle, video_id: &str) -> bool {
 }
 
 // ---- serving files to the offline page --------------------------------------------
+
+/// A downloaded song's address on Oxide's `media` protocol.
+fn media_url(video_id: &str) -> String {
+    let base = if cfg!(any(windows, target_os = "android")) { "http://media.localhost/" } else { "media://localhost/" };
+    format!("{base}{video_id}")
+}
+
+/// Largest slice sent per request; the player asks for the rest as it goes.
+const MEDIA_CHUNK: u64 = 2 * 1024 * 1024;
+
+/// `bytes=a-b` / `bytes=a-` / `bytes=-n` for a file of `size` bytes, as an
+/// inclusive (start, end), capped at MEDIA_CHUNK. None if unsatisfiable.
+fn byte_range(header: Option<&str>, size: u64) -> Option<(u64, u64)> {
+    if size == 0 {
+        return None;
+    }
+    let last = size - 1;
+    let (start, end) = match header.and_then(|h| h.trim().strip_prefix("bytes=")) {
+        None => (0, last),
+        Some(spec) => {
+            let spec = spec.split(',').next()?.trim();
+            let (a, b) = spec.split_once('-')?;
+            if a.is_empty() {
+                let n: u64 = b.parse().ok()?;
+                (size.saturating_sub(n), last)
+            } else {
+                let a: u64 = a.parse().ok()?;
+                let b = if b.is_empty() { last } else { b.parse::<u64>().ok()?.min(last) };
+                (a, b)
+            }
+        }
+    };
+    if start > end || start > last {
+        return None;
+    }
+    Some((start, end.min(start + MEDIA_CHUNK - 1)))
+}
+
+fn media_type(file: &str) -> &'static str {
+    match Path::new(file).extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
+        Some("mp3") => "audio/mpeg",
+        Some("m4a") | Some("mp4") | Some("aac") => "audio/mp4",
+        Some("opus") | Some("ogg") => "audio/ogg",
+        Some("webm") => "audio/webm",
+        Some("flac") => "audio/flac",
+        Some("wav") => "audio/wav",
+        _ => "application/octet-stream",
+    }
+}
+
+/// The `media` protocol: serves downloaded songs by video id, nothing else
+/// on disk, with range requests (seeking) and CORS allowed. CORS is what
+/// lets the offline player route a song through Web Audio for the
+/// visualizer; a cross-origin file without it would play silent there.
+pub fn serve_media(app: &AppHandle, request: &tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    use tauri::http::{header, Response, StatusCode};
+    let reply = |status: StatusCode| {
+        Response::builder()
+            .status(status)
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .body(Vec::new())
+            .unwrap_or_default()
+    };
+    let id = request.uri().path().trim_start_matches('/');
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return reply(StatusCode::NOT_FOUND);
+    }
+    let file = {
+        let _guard = FILE_LOCK.lock().unwrap();
+        read(app).into_iter().find(|t| t.video_id == id).map(|t| t.file)
+    };
+    let Some(file) = file else { return reply(StatusCode::NOT_FOUND) };
+    let Ok(mut f) = std::fs::File::open(&file) else { return reply(StatusCode::NOT_FOUND) };
+    let size = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let range_header = request.headers().get(header::RANGE).and_then(|v| v.to_str().ok());
+    let Some((start, end)) = byte_range(range_header, size) else {
+        return Response::builder()
+            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(header::CONTENT_RANGE, format!("bytes */{size}"))
+            .body(Vec::new())
+            .unwrap_or_default();
+    };
+    let mut body = vec![0u8; (end - start + 1) as usize];
+    if f.seek(SeekFrom::Start(start)).and_then(|_| f.read_exact(&mut body)).is_err() {
+        return reply(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    Response::builder()
+        .status(StatusCode::PARTIAL_CONTENT)
+        .header(header::CONTENT_TYPE, media_type(&file))
+        .header(header::ACCEPT_RANGES, "bytes")
+        .header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{size}"))
+        .header(header::CONTENT_LENGTH, body.len().to_string())
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .body(body)
+        .unwrap_or_default()
+}
 
 /// `convertFileSrc` from the JS API: a URL the webview's asset protocol serves.
 fn asset_url(path: &str) -> String {
@@ -314,11 +431,8 @@ pub async fn offline_library(app: AppHandle) -> LibraryView {
         .into_iter()
         .filter(|t| Path::new(&t.file).is_file())
         .map(|t| {
-            // Only the files in the library are served, nothing else on disk.
-            if let Err(e) = scope.allow_file(&t.file) {
-                log::warn!("can't serve {}: {e}", t.file);
-            }
-            let src = asset_url(&t.file);
+            // Songs come from the `media` protocol (see `serve_media`).
+            let src = media_url(&t.video_id);
             let cover_src = t.cover.as_deref().filter(|c| Path::new(c).is_file()).map(|c| {
                 let _ = scope.allow_file(c);
                 asset_url(c)
@@ -498,6 +612,19 @@ mod tests {
         let url = asset_url(r"C:\Users\me\Music\Oxide\A & B - Song.mp3");
         let prefix = if cfg!(windows) { "http://asset.localhost/" } else { "asset://localhost/" };
         assert_eq!(url, format!("{prefix}C%3A%5CUsers%5Cme%5CMusic%5COxide%5CA%20%26%20B%20-%20Song.mp3"));
+    }
+
+    #[test]
+    fn byte_ranges() {
+        assert_eq!(byte_range(None, 100), Some((0, 99)));
+        assert_eq!(byte_range(Some("bytes=0-"), 100), Some((0, 99)));
+        assert_eq!(byte_range(Some("bytes=10-19"), 100), Some((10, 19)));
+        assert_eq!(byte_range(Some("bytes=90-500"), 100), Some((90, 99)));
+        assert_eq!(byte_range(Some("bytes=-10"), 100), Some((90, 99)));
+        assert_eq!(byte_range(Some("bytes=100-"), 100), None);
+        assert_eq!(byte_range(Some("bytes=0-"), 0), None);
+        let big = 10 * MEDIA_CHUNK;
+        assert_eq!(byte_range(Some("bytes=0-"), big), Some((0, MEDIA_CHUNK - 1)));
     }
 
     #[test]

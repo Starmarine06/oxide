@@ -47,6 +47,7 @@ pub fn model(app: &AppHandle) -> Value {
             item("app:config", "Open config folder", None),
             item("app:update", "Check for updates", None),
             item("app:offline", "Offline library", None),
+            item("ovl:settings", "Settings…", Some("CmdOrCtrl+,")),
             sep(),
             item("app:quit", "Quit", Some("CmdOrCtrl+Q")),
         ],
@@ -77,6 +78,8 @@ pub fn model(app: &AppHandle) -> Value {
             item("play:volup", "Volume up", Some("CmdOrCtrl+Up")),
             item("play:voldown", "Volume down", Some("CmdOrCtrl+Down")),
             item("play:mute", "Mute", Some("CmdOrCtrl+M")),
+            sep(),
+            overlay_menu(app),
         ],
     );
 
@@ -147,6 +150,30 @@ pub fn model(app: &AppHandle) -> Value {
     })
 }
 
+/// "Lyrics on screen": show/hide, click-through, position and what it shows.
+fn overlay_menu(app: &AppHandle) -> Value {
+    let s = crate::overlay::settings(app);
+    let positions = crate::overlay::PRESETS
+        .iter()
+        .map(|(id, label)| radio(&format!("ovl:pos:{id}"), label, s.preset.as_deref() == Some(*id)))
+        .collect();
+    let mut items = vec![
+        check("ovl:toggle", "Show lyrics on screen", crate::overlay::is_open()),
+        check("ovl:click-through", "Click-through", s.click_through),
+        submenu("Position", positions),
+        check("ovl:edit", "Edit layout", crate::overlay::is_editing()),
+        item("ovl:reset-layout", "Reset layout", None),
+        item("ovl:settings", "More settings…", None),
+        sep(),
+    ];
+    let mut shown = s.clone();
+    for (id, label) in crate::overlay::PARTS {
+        let on = crate::overlay::part_flag(&mut shown, id).map(|f| *f).unwrap_or(false);
+        items.push(check(&format!("ovl:show:{id}"), label, on));
+    }
+    submenu("Lyrics on screen", items)
+}
+
 /// Send the new menu model to the title bar.
 pub fn refresh(app: &AppHandle) {
     let model = model(app);
@@ -165,6 +192,9 @@ pub fn menu_click(app: AppHandle, id: String) {
 
 /// Handles clicks from the title bar menu and the tray menu.
 pub fn handle(app: &AppHandle, id: &str) {
+    if crate::overlay::handle_menu(app, id) {
+        return;
+    }
     match id {
         "app:reload" => window::eval(app, "location.reload()"),
         "app:devtools" => {

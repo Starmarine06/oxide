@@ -95,6 +95,7 @@ pub fn create(app: &AppHandle, url: &str, geometry: Option<Geometry>, visible: b
                 let app = webview.app_handle();
                 let cfg = app.state::<Registry>().page_config(&app.state::<ConfigStore>());
                 let _ = webview.eval(format!("window.__pear && window.__pear.setConfig({cfg});"));
+                crate::overlay::on_main_page_load(app);
             }
         });
 
