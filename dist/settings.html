@@ -131,6 +131,15 @@
     </div>
   </section>
 
+  <section aria-labelledby="h-opacity">
+    <h2 id="h-opacity">Transparency</h2>
+    <div class="row stack" id="partOpacity"></div>
+    <div class="row">
+      <div class="what"><div class="hint">100% is solid. The visualizer's is under Visualizer.</div></div>
+      <button class="button" id="opacityDefaults">All solid</button>
+    </div>
+  </section>
+
   <section aria-labelledby="h-viz" id="vizSection">
     <h2 id="h-viz">Visualizer</h2>
     <div class="row stack">
@@ -265,6 +274,35 @@
     invoke('settings_set', { key: 'colors', value: state.overlay.settings.colors });
   });
 
+  // ---- transparency ---------------------------------------------------------
+  const PART_OPACITY = [['cover', 'Cover art'], ['title', 'Title'], ['lyrics', 'Lyrics'], ['next', 'Next line'], ['progress', 'Progress bar']];
+  const OPACITY_DEFAULTS = { cover: 1, title: 1, lyrics: 1, next: 1, progress: 1 };
+  let opacityTimer = 0;
+  function setOpacity(part, value) {
+    state.overlay.settings.opacity = { ...OPACITY_DEFAULTS, ...state.overlay.settings.opacity, [part]: value };
+    renderOpacity();
+    clearTimeout(opacityTimer);
+    opacityTimer = setTimeout(() => invoke('settings_set', { key: 'opacity', value: state.overlay.settings.opacity }), 80);
+  }
+  function renderOpacity() {
+    const o = { ...OPACITY_DEFAULTS, ...state.overlay.settings.opacity };
+    for (const [part] of PART_OPACITY) {
+      const input = $('op-' + part);
+      if (document.activeElement !== input) input.value = o[part];
+      $('op-' + part + 'Out').textContent = Math.round(o[part] * 100) + '%';
+    }
+  }
+  for (const [part, label] of PART_OPACITY) {
+    const input = el('input', { type: 'range', id: 'op-' + part, min: '0.05', max: '1', step: '0.01' });
+    input.addEventListener('input', () => setOpacity(part, parseFloat(input.value)));
+    $('partOpacity').append(el('div', { class: 'slider' }, [el('label', { for: 'op-' + part }, [label]), input, el('output', { id: 'op-' + part + 'Out' })]));
+  }
+  $('opacityDefaults').addEventListener('click', () => {
+    state.overlay.settings.opacity = { ...OPACITY_DEFAULTS };
+    renderOpacity();
+    invoke('settings_set', { key: 'opacity', value: state.overlay.settings.opacity });
+  });
+
   // ---- visualizer look, saved a moment after the last change --------------
   let vizTimer = 0;
   function setViz(patch) {
@@ -303,6 +341,7 @@
     $('parts').replaceChildren(...parts);
     renderViz();
     renderColors();
+    renderOpacity();
     $('general').replaceChildren(...OPTIONS.map(([key, id, name, hint]) => switchRow(name, hint, !!state.options[key], () => click(id))));
     $('version').textContent = 'Oxide ' + state.version;
   }

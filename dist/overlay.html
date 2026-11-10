@@ -9,7 +9,15 @@
     font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: #fff;
     --now: 38px; --next: 22px; --meta: 15px;
     --c-lyrics: #fff; --c-next: #fff; --c-title: #fff; --c-progress: #fff;
+    --o-cover: 1; --o-title: 1; --o-lyrics: 1; --o-next: 1; --o-progress: 1;
   }
+  /* See-through: on each part's content only, so in edit mode its label,
+     handles and buttons stay solid. */
+  .cover img { opacity: var(--o-cover); }
+  #metaText { opacity: var(--o-title); }
+  #now { opacity: var(--o-lyrics); }
+  #next { opacity: calc(.6 * var(--o-next)); }
+  .progress .track { opacity: var(--o-progress); }
   /* The window covers the whole screen; in the automatic layout the parts
      sit together in .card, placed at the chosen spot. */
   .card {
@@ -35,7 +43,8 @@
 
   .cover {
     flex: none; width: min(120px, calc(var(--card-h, 170px) - 24px)); aspect-ratio: 1; border-radius: 6px;
-    box-shadow: 0 6px 24px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08); background: rgba(255,255,255,.06);
+    box-shadow: 0 6px 24px rgba(0,0,0,calc(.55 * var(--o-cover))), 0 0 0 1px rgba(255,255,255,calc(.08 * var(--o-cover)));
+    background: rgba(255,255,255,calc(.06 * var(--o-cover)));
     align-self: center; position: relative; z-index: 1;
   }
   /* Rounded on the image itself: clipping the part would hide its turn knob. */
@@ -57,9 +66,10 @@
   #meta { position: relative; font-size: var(--meta); font-weight: 600; opacity: .85; margin-bottom: 4px; max-width: 100%; }
   #metaText { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--c-title); }
   #now { color: var(--c-lyrics); font-size: var(--now); font-weight: 700; line-height: 1.2; -webkit-line-clamp: 2; }
-  #next { color: var(--c-next); font-size: var(--next); font-weight: 600; line-height: 1.3; opacity: .6; margin-top: 6px; -webkit-line-clamp: 1; min-height: 1.3em; }
+  #next { color: var(--c-next); font-size: var(--next); font-weight: 600; line-height: 1.3; margin-top: 6px; -webkit-line-clamp: 1; min-height: 1.3em; }
   .fade { opacity: 0 !important; transform: translateY(6px); }
-  .dim { opacity: .75; font-size: calc(var(--now) * .7) !important; font-weight: 600 !important; }
+  #now.dim { opacity: calc(.75 * var(--o-lyrics)); }
+  .dim { font-size: calc(var(--now) * .7) !important; font-weight: 600 !important; }
 
   .progress { position: relative; width: min(420px, 100%); height: 13px; margin-top: 2px; display: flex; align-items: center; }
   .progress .track { width: 100%; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--c-progress) 24%, transparent); overflow: hidden; box-shadow: 0 0 6px rgba(0,0,0,.6); }
@@ -276,6 +286,8 @@
     const c = { lyrics: 'white', next: 'white', title: 'white', progress: 'white', ...(opts.colors || {}) };
     const st = document.body.style;
     for (const k of ['lyrics', 'next', 'title', 'progress']) st.setProperty('--c-' + k, `rgb(${rgbOf(c[k], 0.72).join(',')})`);
+    const o = { cover: 1, title: 1, lyrics: 1, next: 1, progress: 1, ...(opts.opacity || {}) };
+    for (const k of Object.keys(o)) st.setProperty('--o-' + k, String(Math.min(1, Math.max(0.05, Number(o[k]) || 1))));
   }
   // Average colour of the cover, measured from the image when the server
   // allows it (downloaded songs bring theirs along).

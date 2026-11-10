@@ -8,7 +8,7 @@
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-use crate::config::{ConfigStore, PartColors, VizSettings};
+use crate::config::{ConfigStore, PartColors, PartOpacity, VizSettings};
 use crate::overlay;
 
 const LABEL: &str = "settings";
@@ -55,7 +55,8 @@ pub fn settings_get(app: AppHandle) -> Value {
 }
 
 /// Change one overlay setting: `part` (with `id` and a bool), `clickThrough`
-/// (bool), `viz` (the whole visualizer look) or `colors` (text and progress).
+/// (bool), `viz` (the whole visualizer look), `colors` (text and progress) or
+/// `opacity` (how see-through each part is).
 #[tauri::command]
 pub fn settings_set(app: AppHandle, key: String, id: Option<String>, value: Value) -> Result<(), String> {
     match key.as_str() {
@@ -67,6 +68,10 @@ pub fn settings_set(app: AppHandle, key: String, id: Option<String>, value: Valu
         "viz" => {
             let viz: VizSettings = serde_json::from_value(value).map_err(|e| e.to_string())?;
             overlay::set_viz(&app, viz);
+        }
+        "opacity" => {
+            let opacity: PartOpacity = serde_json::from_value(value).map_err(|e| e.to_string())?;
+            overlay::set_opacity(&app, opacity);
         }
         "colors" => {
             let colors: PartColors = serde_json::from_value(value).map_err(|e| e.to_string())?;

@@ -146,6 +146,34 @@ impl PartColors {
     }
 }
 
+/// How see-through each part of the on-screen lyrics is (1 = solid). The
+/// visualizer has its own, in `VizSettings`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PartOpacity {
+    pub cover: f64,
+    pub title: f64,
+    pub lyrics: f64,
+    pub next: f64,
+    pub progress: f64,
+}
+
+impl Default for PartOpacity {
+    fn default() -> Self {
+        Self { cover: 1.0, title: 1.0, lyrics: 1.0, next: 1.0, progress: 1.0 }
+    }
+}
+
+impl PartOpacity {
+    /// 5% to 100%; anything else back to solid.
+    pub fn clean(mut self) -> Self {
+        for v in [&mut self.cover, &mut self.title, &mut self.lyrics, &mut self.next, &mut self.progress] {
+            *v = if v.is_finite() { v.clamp(0.05, 1.0) } else { 1.0 };
+        }
+        self
+    }
+}
+
 fn is_zero(v: &f64) -> bool {
     *v == 0.0
 }
@@ -179,6 +207,7 @@ pub struct OverlaySettings {
     pub screen_layout: bool,
     pub viz: VizSettings,
     pub colors: PartColors,
+    pub opacity: PartOpacity,
 }
 
 impl Default for OverlaySettings {
@@ -197,6 +226,7 @@ impl Default for OverlaySettings {
             screen_layout: true,
             viz: VizSettings::default(),
             colors: PartColors::default(),
+            opacity: PartOpacity::default(),
         }
     }
 }

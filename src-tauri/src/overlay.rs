@@ -22,7 +22,7 @@ use std::time::Duration;
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
-use crate::config::{ConfigStore, LayoutBox, OverlaySettings, PartColors, Rect, VizSettings};
+use crate::config::{ConfigStore, LayoutBox, OverlaySettings, PartColors, PartOpacity, Rect, VizSettings};
 use crate::player::{Change, PlayerState, SongInfo};
 use crate::plugins::{lyrics, Registry};
 
@@ -532,6 +532,11 @@ pub fn set_viz(app: &AppHandle, viz: VizSettings) {
 /// Text and progress colours from the Settings window.
 pub fn set_colors(app: &AppHandle, colors: PartColors) {
     change(app, |s| s.colors = colors.clean());
+}
+
+/// How see-through each part is, from the Settings window.
+pub fn set_opacity(app: &AppHandle, opacity: PartOpacity) {
+    change(app, |s| s.opacity = opacity.clean());
 }
 
 /// A part on or off from the Settings window.
