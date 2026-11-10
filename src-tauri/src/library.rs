@@ -497,6 +497,7 @@ pub fn show_offline(app: &AppHandle) {
     if !w.url().is_ok_and(|u| is_offline_url(u.as_str())) {
         *LEFT_OFF.lock().unwrap() = song.map(|s| (s.video_id, s.elapsed));
     }
+    crate::overlay::page_switched(app);
     let _ = w.navigate(url);
 }
 
@@ -538,6 +539,7 @@ pub fn go_online(app: AppHandle, video_id: Option<String>, time: Option<f64>, vo
         None => left_off,
     };
     let url = online_url(resume.as_ref().map(|(id, t)| (id.as_str(), *t)), volume, muted.unwrap_or(false));
+    crate::overlay::page_switched(&app);
     let _ = w.navigate(url);
 }
 

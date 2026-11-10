@@ -19,8 +19,8 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     for (id, label) in overlay::PRESETS {
         positions.append(&check(&format!("ovl:pos:{id}"), label, s.preset.as_deref() == Some(id))?)?;
     }
-    let lyrics = Submenu::with_id(app, "tray:ovl", "Lyrics on screen", true)?;
-    lyrics.append(&check("ovl:toggle", "Show lyrics on screen", overlay::is_open())?)?;
+    let lyrics = Submenu::with_id(app, "tray:ovl", "On-screen display", true)?;
+    lyrics.append(&check("ovl:toggle", "Show on screen", overlay::is_open())?)?;
     lyrics.append(&check("ovl:click-through", "Click-through", s.click_through)?)?;
     lyrics.append(&positions)?;
     lyrics.append(&check("ovl:edit", "Edit layout", overlay::is_editing())?)?;

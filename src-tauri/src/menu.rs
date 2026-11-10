@@ -150,7 +150,7 @@ pub fn model(app: &AppHandle) -> Value {
     })
 }
 
-/// "Lyrics on screen": show/hide, click-through, position and what it shows.
+/// "On-screen display": show/hide, click-through, position and what it shows.
 fn overlay_menu(app: &AppHandle) -> Value {
     let s = crate::overlay::settings(app);
     let positions = crate::overlay::PRESETS
@@ -158,7 +158,7 @@ fn overlay_menu(app: &AppHandle) -> Value {
         .map(|(id, label)| radio(&format!("ovl:pos:{id}"), label, s.preset.as_deref() == Some(*id)))
         .collect();
     let mut items = vec![
-        check("ovl:toggle", "Show lyrics on screen", crate::overlay::is_open()),
+        check("ovl:toggle", "Show on screen", crate::overlay::is_open()),
         check("ovl:click-through", "Click-through", s.click_through),
         submenu("Position", positions),
         check("ovl:edit", "Edit layout", crate::overlay::is_editing()),
@@ -171,7 +171,7 @@ fn overlay_menu(app: &AppHandle) -> Value {
         let on = crate::overlay::part_flag(&mut shown, id).map(|f| *f).unwrap_or(false);
         items.push(check(&format!("ovl:show:{id}"), label, on));
     }
-    submenu("Lyrics on screen", items)
+    submenu("On-screen display", items)
 }
 
 /// Send the new menu model to the title bar.

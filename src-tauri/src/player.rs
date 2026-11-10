@@ -70,6 +70,18 @@ impl PlayerState {
         self.current.lock().unwrap().as_ref().map(|(s, _)| s.clone())
     }
 
+    /// The page that was playing went away (switching between YouTube Music
+    /// and the offline player): its song isn't playing any more.
+    pub fn stop_current(&self) {
+        if let Some((s, at)) = self.current.lock().unwrap().as_mut() {
+            if !s.paused {
+                s.elapsed = (s.elapsed + at.elapsed().as_secs_f64()).min(s.duration.max(s.elapsed));
+                s.paused = true;
+                *at = Instant::now();
+            }
+        }
+    }
+
     /// Like `current`, with `elapsed` advanced to now while playing.
     pub fn current_live(&self) -> Option<SongInfo> {
         self.current.lock().unwrap().as_ref().map(|(s, at)| {

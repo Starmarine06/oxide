@@ -43,16 +43,18 @@ pub const PRESETS: [(&str, &str); 6] = [
 ];
 
 /// What it can show besides the current line, as (id, menu label).
-pub const PARTS: [(&str, &str); 5] = [
+pub const PARTS: [(&str, &str); 7] = [
     ("cover", "Cover art"),
-    ("title", "Song title and artist"),
+    ("title", "Song title"),
+    ("artist", "Artist"),
+    ("lyrics", "Lyrics"),
     ("next", "Next line"),
     ("progress", "Progress bar"),
     ("visualizer", "Visualizer"),
 ];
 
 /// Parts that can be placed in edit mode.
-const LAYOUT_PARTS: [&str; 5] = ["cover", "title", "lyrics", "progress", "visualizer"];
+const LAYOUT_PARTS: [&str; 6] = ["cover", "title", "artist", "lyrics", "progress", "visualizer"];
 
 static OPEN: AtomicBool = AtomicBool::new(false);
 /// Edit mode: each part can be moved, resized and turned anywhere on the
@@ -171,6 +173,11 @@ pub fn part_flag<'a>(s: &'a mut OverlaySettings, part: &str) -> Option<&'a mut b
     Some(match part {
         "cover" => &mut s.show_cover,
         "title" => &mut s.show_title,
+        "artist" => {
+            let title = s.show_title;
+            s.show_artist.get_or_insert(title)
+        }
+        "lyrics" => &mut s.show_lyrics,
         "next" => &mut s.show_next,
         "progress" => &mut s.show_progress,
         "visualizer" => &mut s.show_visualizer,
@@ -214,8 +221,9 @@ fn clean_layout(layout: BTreeMap<String, LayoutBox>) -> BTreeMap<String, LayoutB
             let h = b.h.clamp(0.005, 1.0);
             let align = b.align.filter(|a| ["left", "center", "right"].contains(&a.as_str()));
             let rot = (b.rot + 180.0).rem_euclid(360.0) - 180.0;
+            let size = if b.size.is_finite() { b.size.clamp(0.3, 4.0) } else { 1.0 };
             let (cx, cy) = ((b.x + w / 2.0).clamp(0.0, 1.0), (b.y + h / 2.0).clamp(0.0, 1.0));
-            (id, LayoutBox { x: cx - w / 2.0, y: cy - h / 2.0, w, h, rot, flip: b.flip, align })
+            (id, LayoutBox { x: cx - w / 2.0, y: cy - h / 2.0, w, h, rot, flip: b.flip, size, nowrap: b.nowrap, align })
         })
         .collect()
 }
@@ -228,6 +236,7 @@ pub fn overlay_save_layout(app: AppHandle, layout: Option<BTreeMap<String, Layou
     app.state::<ConfigStore>().update(|c| {
         c.overlay.layout = layout;
         c.overlay.screen_layout = true;
+        c.overlay.monitor_layout = true;
         c.overlay.preset = None;
     });
     if done {
@@ -240,15 +249,15 @@ pub fn overlay_save_layout(app: AppHandle, layout: Option<BTreeMap<String, Layou
 }
 
 /// The automatic layout was dragged to a new spot (window-relative logical
-/// px, i.e. relative to the screen's work area).
+/// px, i.e. relative to the screen).
 #[tauri::command]
 pub fn overlay_save_group(app: AppHandle, x: f64, y: f64, width: f64, height: f64) {
-    let Some(area) = work_area(&app) else { return };
+    let Some(areas) = areas(&app) else { return };
     if ![x, y, width, height].iter().all(|v| v.is_finite()) {
         return;
     }
-    let rect = Rect { x: area.0 + x, y: area.1 + y, width: width.max(MIN_WIDTH), height: height.max(MIN_HEIGHT) };
-    let align = align_for(&rect, area);
+    let rect = Rect { x: areas.screen.0 + x, y: areas.screen.1 + y, width: width.max(MIN_WIDTH), height: height.max(MIN_HEIGHT) };
+    let align = align_for(&rect, areas.work);
     change(&app, |s| {
         s.rect = Some(rect);
         s.preset = None;
@@ -305,18 +314,33 @@ fn watch_cursor(app: AppHandle) {
 
 // ---- placement ------------------------------------------------------------------
 
-/// Work area (logical x, y, width, height) of the screen the overlay is on,
-/// else the main window's, else the primary screen.
-fn work_area(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
+/// A screen's whole area and its work area (without the taskbar), each as
+/// logical (x, y, width, height). The overlay covers the whole screen, so
+/// nothing is cut off where the taskbar is (it's hidden in full screen);
+/// presets still keep to the work area.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Areas {
+    screen: (f64, f64, f64, f64),
+    work: (f64, f64, f64, f64),
+}
+
+fn areas_of(m: &tauri::Monitor) -> Areas {
+    let scale = m.scale_factor();
+    let pos = m.position().to_logical::<f64>(scale);
+    let size = m.size().to_logical::<f64>(scale);
+    let wpos = m.work_area().position.to_logical::<f64>(scale);
+    let wsize = m.work_area().size.to_logical::<f64>(scale);
+    Areas { screen: (pos.x, pos.y, size.width, size.height), work: (wpos.x, wpos.y, wsize.width, wsize.height) }
+}
+
+/// The areas of the screen the overlay is on, else the main window's, else
+/// the primary screen.
+fn areas(app: &AppHandle) -> Option<Areas> {
     let monitor = window(app)
         .and_then(|w| w.current_monitor().ok().flatten())
         .or_else(|| crate::window::main_window(app).and_then(|w| w.current_monitor().ok().flatten()))
         .or_else(|| app.primary_monitor().ok().flatten())?;
-    let scale = monitor.scale_factor();
-    let area = monitor.work_area();
-    let pos = area.position.to_logical::<f64>(scale);
-    let size = area.size.to_logical::<f64>(scale);
-    Some((pos.x, pos.y, size.width, size.height))
+    Some(areas_of(&monitor))
 }
 
 /// Where a preset puts the automatic layout, and how its text lines up.
@@ -371,20 +395,25 @@ fn layout_bounds(layout: &BTreeMap<String, LayoutBox>, aspect: f64) -> Option<(f
     })
 }
 
-/// Move a hand-made layout, as a whole, to a preset's corner or edge.
-fn shift_layout(layout: &mut BTreeMap<String, LayoutBox>, preset: &str, area: (f64, f64, f64, f64)) {
-    let aspect = area.2 / area.3;
+/// Move a hand-made layout (screen fractions), as a whole, to a preset's
+/// corner or edge of the work area, so it stays clear of the taskbar.
+fn shift_layout(layout: &mut BTreeMap<String, LayoutBox>, preset: &str, areas: Areas) {
+    let (sx, sy, sw, sh) = areas.screen;
+    let aspect = sw / sh;
     let Some((x0, y0, x1, y1)) = layout_bounds(layout, aspect) else { return };
-    let (mx, my) = (MARGIN / area.2, MARGIN / area.3);
+    // The work area in screen fractions.
+    let (wx, wy) = ((areas.work.0 - sx) / sw, (areas.work.1 - sy) / sh);
+    let (ww, wh) = (areas.work.2 / sw, areas.work.3 / sh);
+    let (mx, my) = (MARGIN / sw, MARGIN / sh);
     let (w, h) = (x1 - x0, y1 - y0);
     let tx = if preset.ends_with("left") {
-        mx
+        wx + mx
     } else if preset.ends_with("right") {
-        1.0 - w - mx
+        wx + ww - w - mx
     } else {
-        (1.0 - w) / 2.0
+        wx + (ww - w) / 2.0
     };
-    let ty = if preset.starts_with("top") { my } else { 1.0 - h - my };
+    let ty = if preset.starts_with("top") { wy + my } else { wy + wh - h - my };
     let (dx, dy) = (tx.max(0.0) - x0, ty.max(0.0) - y0);
     // Everything moves by the same amount, so the layout keeps its shape.
     for b in layout.values_mut() {
@@ -394,42 +423,51 @@ fn shift_layout(layout: &mut BTreeMap<String, LayoutBox>, preset: &str, area: (f
 }
 
 fn place_preset(app: &AppHandle, preset: &str) {
-    let Some(area) = work_area(app) else { return };
+    let Some(areas) = areas(app) else { return };
     let height = settings(app).rect.map(|r| r.height).unwrap_or(DEFAULT_HEIGHT);
-    let (rect, align) = preset_rect(area, preset, height);
+    let (rect, align) = preset_rect(areas.work, preset, height);
     change(app, |s| {
         s.preset = Some(preset.to_string());
         s.align = align.to_string();
         s.rect = Some(rect);
         if let Some(layout) = s.layout.as_mut() {
-            shift_layout(layout, preset, area);
+            shift_layout(layout, preset, areas);
         }
     });
 }
 
-/// Layouts saved before the overlay covered the whole screen were fractions
-/// of its old window (`rect`); turn them into screen fractions.
-fn upgrade_layout(app: &AppHandle, area: (f64, f64, f64, f64)) {
+/// Turn an older layout into fractions of the whole screen, so it stays
+/// where it was: layouts were once fractions of the overlay's small window
+/// (`rect`), then of the screen's work area.
+fn upgrade_layout(app: &AppHandle, areas: Areas) {
     let s = settings(app);
-    if s.screen_layout || s.layout.is_none() {
+    if s.layout.is_none() || (s.screen_layout && s.monitor_layout) {
         return;
     }
-    let rect = s.rect.unwrap_or_else(|| preset_rect(area, s.preset.as_deref().unwrap_or("bottom"), DEFAULT_HEIGHT).0);
+    // What the old fractions were of, in logical screen pixels.
+    let from = if s.screen_layout {
+        areas.work
+    } else {
+        let r = s.rect.unwrap_or_else(|| preset_rect(areas.work, s.preset.as_deref().unwrap_or("bottom"), DEFAULT_HEIGHT).0);
+        (r.x, r.y, r.width, r.height)
+    };
+    let (sx, sy, sw, sh) = areas.screen;
     app.state::<ConfigStore>().update(|c| {
         if let Some(layout) = c.overlay.layout.as_mut() {
             for b in layout.values_mut() {
-                b.x = (rect.x - area.0 + b.x * rect.width) / area.2;
-                b.y = (rect.y - area.1 + b.y * rect.height) / area.3;
-                b.w *= rect.width / area.2;
-                b.h *= rect.height / area.3;
+                b.x = (from.0 - sx + b.x * from.2) / sw;
+                b.y = (from.1 - sy + b.y * from.3) / sh;
+                b.w *= from.2 / sw;
+                b.h *= from.3 / sh;
             }
         }
         c.overlay.screen_layout = true;
+        c.overlay.monitor_layout = true;
     });
 }
 
 /// The screen the overlay was on (its saved spot), else the main window's.
-fn target_area(app: &AppHandle) -> (f64, f64, f64, f64) {
+fn target_areas(app: &AppHandle) -> Areas {
     let s = settings(app);
     let monitors = app.available_monitors().unwrap_or_default();
     let saved = s.rect.and_then(|r| {
@@ -445,20 +483,16 @@ fn target_area(app: &AppHandle) -> (f64, f64, f64, f64) {
         .or_else(|| crate::window::main_window(app).and_then(|w| w.current_monitor().ok().flatten()))
         .or_else(|| app.primary_monitor().ok().flatten());
     match monitor {
-        Some(m) => {
-            let scale = m.scale_factor();
-            let pos = m.work_area().position.to_logical::<f64>(scale);
-            let size = m.work_area().size.to_logical::<f64>(scale);
-            (pos.x, pos.y, size.width, size.height)
-        }
-        None => (0.0, 0.0, 1280.0, 720.0),
+        Some(m) => areas_of(&m),
+        None => Areas { screen: (0.0, 0.0, 1280.0, 720.0), work: (0.0, 0.0, 1280.0, 720.0) },
     }
 }
 
 fn build(app: &AppHandle) -> tauri::Result<()> {
-    let area = target_area(app);
-    upgrade_layout(app, area);
-    let (x, y, width, height) = area;
+    let areas = target_areas(app);
+    upgrade_layout(app, areas);
+    // The whole screen, taskbar strip included.
+    let (x, y, width, height) = areas.screen;
     CLICK_THROUGH.store(settings(app).click_through, Ordering::SeqCst);
 
     let win = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("overlay.html".into()))
@@ -503,10 +537,12 @@ fn eval(app: &AppHandle, js: &str) {
 fn push_settings(app: &AppHandle, s: &OverlaySettings) {
     let mut value = serde_json::to_value(s).unwrap_or_default();
     value["editing"] = json!(is_editing());
-    // Where the automatic layout goes, relative to the window (the work area).
-    if let Some(area) = work_area(app) {
-        let rect = s.rect.unwrap_or_else(|| preset_rect(area, s.preset.as_deref().unwrap_or("bottom"), DEFAULT_HEIGHT).0);
-        value["group"] = json!({ "x": rect.x - area.0, "y": rect.y - area.1, "w": rect.width, "h": rect.height });
+    // The artist follows the title until it's been set on its own.
+    value["showArtist"] = json!(s.show_artist.unwrap_or(s.show_title));
+    // Where the automatic layout goes, relative to the window (the screen).
+    if let Some(areas) = areas(app) {
+        let rect = s.rect.unwrap_or_else(|| preset_rect(areas.work, s.preset.as_deref().unwrap_or("bottom"), DEFAULT_HEIGHT).0);
+        value["group"] = json!({ "x": rect.x - areas.screen.0, "y": rect.y - areas.screen.1, "w": rect.width, "h": rect.height });
     }
     eval(app, &format!("window.oxide && oxide.settings({value});"));
 }
@@ -515,8 +551,11 @@ fn push_settings(app: &AppHandle, s: &OverlaySettings) {
 
 /// Everything the Settings window shows about the overlay.
 pub fn settings_view(app: &AppHandle) -> Value {
+    let s = settings(app);
+    let mut shown = serde_json::to_value(&s).unwrap_or_default();
+    shown["showArtist"] = json!(s.show_artist.unwrap_or(s.show_title));
     json!({
-        "settings": settings(app),
+        "settings": shown,
         "open": is_open(),
         "editing": is_editing(),
         "presets": PRESETS.iter().map(|(id, label)| json!({ "id": id, "label": label })).collect::<Vec<_>>(),
@@ -645,6 +684,21 @@ fn load(app: &AppHandle, song: &SongInfo) {
     });
 }
 
+/// The main window is switching between YouTube Music and the offline
+/// player. The song that was on stops with its page, so the display stops
+/// following it and starts fresh with whatever plays next (before, it
+/// stayed stuck on the old song's lyrics).
+pub fn page_switched(app: &AppHandle) {
+    app.state::<PlayerState>().stop_current();
+    *LOADED.lock().unwrap() = None;
+    if is_open() {
+        push_lyrics(app, &json!({}));
+        if let Some(song) = app.state::<PlayerState>().current_live() {
+            push_clock(app, &song);
+        }
+    }
+}
+
 /// Re-send the clock, e.g. after the lyrics shift for the song changed.
 pub fn resync(app: &AppHandle) {
     if !is_open() {
@@ -721,13 +775,13 @@ mod tests {
     #[test]
     fn layouts_are_cleaned() {
         let mut l = BTreeMap::new();
-        l.insert("cover".to_string(), LayoutBox { x: 0.95, y: -0.2, w: 0.3, h: 0.5, rot: 0.0, flip: false, align: None });
-        l.insert("lyrics".to_string(), LayoutBox { x: 0.1, y: 0.1, w: 0.5, h: 0.5, rot: 270.0, flip: false, align: Some("diagonal".into()) });
-        l.insert("evil".to_string(), LayoutBox { x: 0.1, y: 0.1, w: 0.5, h: 0.5, rot: 0.0, flip: false, align: None });
+        l.insert("cover".to_string(), LayoutBox { x: 0.95, y: -0.2, w: 0.3, h: 0.5, rot: 0.0, flip: false, size: 1.0, nowrap: false, align: None });
+        l.insert("lyrics".to_string(), LayoutBox { x: 0.1, y: 0.1, w: 0.5, h: 0.5, rot: 270.0, flip: false, size: 1.0, nowrap: false, align: Some("diagonal".into()) });
+        l.insert("evil".to_string(), LayoutBox { x: 0.1, y: 0.1, w: 0.5, h: 0.5, rot: 0.0, flip: false, size: 1.0, nowrap: false, align: None });
         let c = clean_layout(l);
         assert_eq!(c.len(), 2);
         // Middles are kept on the screen: x 0.95 + 0.15 -> middle 1.0; y -0.2 + 0.25 = 0.05 stays.
-        assert_eq!(c["cover"], LayoutBox { x: 0.85, y: -0.2, w: 0.3, h: 0.5, rot: 0.0, flip: false, align: None });
+        assert_eq!(c["cover"], LayoutBox { x: 0.85, y: -0.2, w: 0.3, h: 0.5, rot: 0.0, flip: false, size: 1.0, nowrap: false, align: None });
         assert_eq!(c["lyrics"].align, None);
         assert_eq!(c["lyrics"].rot, -90.0);
     }
@@ -735,9 +789,9 @@ mod tests {
     #[test]
     fn presets_move_a_hand_made_layout_as_a_whole() {
         let mut l = BTreeMap::new();
-        l.insert("cover".to_string(), LayoutBox { x: 0.4, y: 0.4, w: 0.1, h: 0.1, rot: 0.0, flip: false, align: None });
-        l.insert("lyrics".to_string(), LayoutBox { x: 0.5, y: 0.45, w: 0.2, h: 0.1, rot: 0.0, flip: false, align: None });
-        shift_layout(&mut l, "bottom-right", AREA);
+        l.insert("cover".to_string(), LayoutBox { x: 0.4, y: 0.4, w: 0.1, h: 0.1, rot: 0.0, flip: false, size: 1.0, nowrap: false, align: None });
+        l.insert("lyrics".to_string(), LayoutBox { x: 0.5, y: 0.45, w: 0.2, h: 0.1, rot: 0.0, flip: false, size: 1.0, nowrap: false, align: None });
+        shift_layout(&mut l, "bottom-right", Areas { screen: AREA, work: AREA });
         let (x0, y0, x1, y1) = layout_bounds(&l, AREA.2 / AREA.3).unwrap();
         assert!((x1 - (1.0 - MARGIN / AREA.2)).abs() < 1e-9 && (y1 - (1.0 - MARGIN / AREA.3)).abs() < 1e-9);
         assert!(((x1 - x0) - 0.3).abs() < 1e-9 && ((y1 - y0) - 0.15).abs() < 1e-9);
@@ -747,16 +801,27 @@ mod tests {
     fn turned_parts_are_measured_by_their_outline() {
         let aspect = AREA.2 / AREA.3;
         // A wide visualizer turned a quarter turn is as tall as it was wide.
-        let b = LayoutBox { x: 0.3, y: 0.4, w: 0.4, h: 0.1, rot: 90.0, flip: false, align: None };
+        let b = LayoutBox { x: 0.3, y: 0.4, w: 0.4, h: 0.1, rot: 90.0, flip: false, size: 1.0, nowrap: false, align: None };
         let (hx, hy) = extents(&b, aspect);
         assert!((hx - 0.1 / aspect / 2.0).abs() < 1e-9);
         assert!((hy - 0.4 * aspect / 2.0).abs() < 1e-9);
         // So moving it to the right edge puts its outline there, not its unturned box.
         let mut l = BTreeMap::new();
         l.insert("visualizer".to_string(), b);
-        shift_layout(&mut l, "top-right", AREA);
+        shift_layout(&mut l, "top-right", Areas { screen: AREA, work: AREA });
         let (_, _, x1, _) = layout_bounds(&l, aspect).unwrap();
         assert!((x1 - (1.0 - MARGIN / AREA.2)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn presets_keep_clear_of_the_taskbar() {
+        // 1536x864 screen with a 48px taskbar at the bottom.
+        let areas = Areas { screen: (0.0, 0.0, 1536.0, 864.0), work: (0.0, 0.0, 1536.0, 816.0) };
+        let mut l = BTreeMap::new();
+        l.insert("lyrics".to_string(), LayoutBox { x: 0.3, y: 0.2, w: 0.4, h: 0.1, rot: 0.0, flip: false, size: 1.0, nowrap: false, align: None });
+        shift_layout(&mut l, "bottom", areas);
+        let bottom_px = (l["lyrics"].y + l["lyrics"].h) * 864.0;
+        assert!((bottom_px - (816.0 - MARGIN)).abs() < 1e-6, "{bottom_px}");
     }
 
     #[test]

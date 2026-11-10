@@ -94,13 +94,13 @@
   <p class="lede">Changes apply straight away.</p>
 
   <section aria-labelledby="h-lyrics">
-    <h2 id="h-lyrics">On-screen lyrics</h2>
+    <h2 id="h-lyrics">On-screen display</h2>
     <div class="row">
-      <div class="what"><div class="name">Show lyrics on screen</div><div class="hint">Synced lyrics over everything else, while music plays.</div></div>
-      <label class="switch"><input type="checkbox" id="open" aria-label="Show lyrics on screen"><span></span></label>
+      <div class="what"><div class="name">Show on screen</div><div class="hint">Lyrics, cover art, a visualizer and more, over everything else while music plays. Choose what shows under Show.</div></div>
+      <label class="switch"><input type="checkbox" id="open" aria-label="Show the on-screen display"><span></span></label>
     </div>
     <div class="row">
-      <div class="what"><div class="name">Click-through</div><div class="hint">On: clicks always go to whatever's underneath. Off: hover the lyrics for buttons, and drag them to move.</div></div>
+      <div class="what"><div class="name">Click-through</div><div class="hint">On: clicks always go to whatever's underneath. Off: hover the display for buttons, and drag it to move.</div></div>
       <label class="switch"><input type="checkbox" id="clickThrough" aria-label="Click-through"><span></span></label>
     </div>
     <div class="row stack">
@@ -249,8 +249,8 @@
   }
 
   // ---- text and progress colours -------------------------------------------
-  const PART_COLORS = [['lyrics', 'Lyrics'], ['next', 'Next line'], ['title', 'Title'], ['progress', 'Progress bar']];
-  const COLOR_DEFAULTS = { lyrics: 'white', next: 'white', title: 'white', progress: 'white' };
+  const PART_COLORS = [['lyrics', 'Lyrics'], ['next', 'Next line'], ['title', 'Title'], ['artist', 'Artist'], ['progress', 'Progress bar']];
+  const COLOR_DEFAULTS = { lyrics: 'white', next: 'white', title: 'white', artist: 'white', progress: 'white' };
   const colorMarks = {};
   let colorTimer = 0;
   function setColor(part, value) {
@@ -275,8 +275,8 @@
   });
 
   // ---- transparency ---------------------------------------------------------
-  const PART_OPACITY = [['cover', 'Cover art'], ['title', 'Title'], ['lyrics', 'Lyrics'], ['next', 'Next line'], ['progress', 'Progress bar']];
-  const OPACITY_DEFAULTS = { cover: 1, title: 1, lyrics: 1, next: 1, progress: 1 };
+  const PART_OPACITY = [['cover', 'Cover art'], ['title', 'Title'], ['artist', 'Artist'], ['lyrics', 'Lyrics'], ['next', 'Next line'], ['progress', 'Progress bar']];
+  const OPACITY_DEFAULTS = { cover: 1, title: 1, artist: 1, lyrics: 1, next: 1, progress: 1 };
   let opacityTimer = 0;
   function setOpacity(part, value) {
     state.overlay.settings.opacity = { ...OPACITY_DEFAULTS, ...state.overlay.settings.opacity, [part]: value };

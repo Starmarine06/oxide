@@ -8,13 +8,15 @@
   body {
     font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: #fff;
     --now: 38px; --next: 22px; --meta: 15px;
-    --c-lyrics: #fff; --c-next: #fff; --c-title: #fff; --c-progress: #fff;
-    --o-cover: 1; --o-title: 1; --o-lyrics: 1; --o-next: 1; --o-progress: 1;
+    --artist: 13px;
+    --c-lyrics: #fff; --c-next: #fff; --c-title: #fff; --c-artist: #fff; --c-progress: #fff;
+    --o-cover: 1; --o-title: 1; --o-artist: 1; --o-lyrics: 1; --o-next: 1; --o-progress: 1;
   }
   /* See-through: on each part's content only, so in edit mode its label,
      handles and buttons stay solid. */
   .cover img { opacity: var(--o-cover); }
   #metaText { opacity: var(--o-title); }
+  #artistText { opacity: var(--o-artist); }
   #now { opacity: var(--o-lyrics); }
   #next { opacity: calc(.6 * var(--o-next)); }
   .progress .track { opacity: var(--o-progress); }
@@ -65,6 +67,8 @@
   .line { max-width: 100%; transition: opacity .25s ease, transform .25s ease; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
   #meta { position: relative; font-size: var(--meta); font-weight: 600; opacity: .85; margin-bottom: 4px; max-width: 100%; }
   #metaText { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--c-title); }
+  #artist { position: relative; font-size: var(--artist); font-weight: 500; opacity: .8; margin: -2px 0 4px; max-width: 100%; }
+  #artistText { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--c-artist); }
   #now { color: var(--c-lyrics); font-size: var(--now); font-weight: 700; line-height: 1.2; -webkit-line-clamp: 2; }
   #next { color: var(--c-next); font-size: var(--next); font-weight: 600; line-height: 1.3; margin-top: 6px; -webkit-line-clamp: 1; min-height: 1.3em; }
   .fade { opacity: 0 !important; transform: translateY(6px); }
@@ -89,12 +93,17 @@
   body.custom .viz { z-index: 1; }
   body.custom .cover { align-self: auto; aspect-ratio: auto; }
   body.custom #lyrics { justify-content: center; }
-  body.custom #meta { display: flex; flex-direction: column; justify-content: center; }
-  body.custom #metaText { max-width: 100%; }
+  body.custom #meta, body.custom #artist { display: flex; flex-direction: column; justify-content: center; }
+  body.custom #metaText, body.custom #artistText { max-width: 100%; }
+  /* Wrap (the default when placed by hand): long text carries on onto the
+     next line. Off: one line, cut short with "…". */
+  body.custom .part.wrap #metaText, body.custom .part.wrap #artistText { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+  body.custom #lyrics.wrap .line { display: block; -webkit-line-clamp: unset; overflow: visible; overflow-wrap: anywhere; }
+  body.custom #lyrics.nowrap .line { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   body.custom .progress { width: auto; }
-  body.custom #lyrics[data-align="left"], body.custom #meta[data-align="left"] { text-align: left; align-items: flex-start; }
-  body.custom #lyrics[data-align="center"], body.custom #meta[data-align="center"] { text-align: center; align-items: center; }
-  body.custom #lyrics[data-align="right"], body.custom #meta[data-align="right"] { text-align: right; align-items: flex-end; }
+  body.custom #lyrics[data-align="left"], body.custom #meta[data-align="left"], body.custom #artist[data-align="left"] { text-align: left; align-items: flex-start; }
+  body.custom #lyrics[data-align="center"], body.custom #meta[data-align="center"], body.custom #artist[data-align="center"] { text-align: center; align-items: center; }
+  body.custom #lyrics[data-align="right"], body.custom #meta[data-align="right"], body.custom #artist[data-align="right"] { text-align: right; align-items: flex-end; }
 
   /* ---- edit mode ---------------------------------------------------------------- */
   body.editing { background: rgba(0, 0, 0, .28); }
@@ -120,12 +129,16 @@
   /* Near the top of the screen the knob goes underneath instead. */
   body.editing .part.knob-below .turn { top: auto; bottom: -26px; }
   body.editing .part.knob-below .turn::after { top: -10px; }
-  body.editing .aligns { display: flex; position: absolute; top: 3px; right: 3px; gap: 2px; opacity: 1; }
+  /* Above the box, so they never cover the text. */
+  body.editing .aligns { display: flex; position: absolute; top: -22px; right: 0; gap: 2px; opacity: 1; }
+  body.editing .part.knob-below .aligns { top: auto; bottom: -22px; }
   .aligns button {
     width: 20px; height: 18px; border: 0; padding: 0; border-radius: 3px; background: rgba(0,0,0,.65); color: #fff; cursor: pointer;
     display: grid; place-items: center;
   }
   .aligns button[aria-pressed="true"] { background: #fff; color: #111; }
+  .aligns .tb { width: auto; min-width: 22px; padding: 0 5px; font: 700 10px/1 "Segoe UI", system-ui, sans-serif; }
+  .aligns .sep { width: 4px; }
   body.editing .flipper {
     display: flex; align-items: center; gap: 4px; position: absolute; top: 3px; right: 3px; height: 18px; padding: 0 6px;
     border: 0; border-radius: 3px; background: rgba(0,0,0,.65); color: #fff; cursor: pointer;
@@ -162,6 +175,7 @@
   <div class="part cover" id="cover" data-part="cover" hidden><img id="coverImg" alt=""></div>
   <div class="text">
     <div id="meta" class="part shadowed" data-part="title" hidden><span id="metaText"></span></div>
+    <div id="artist" class="part shadowed" data-part="artist" hidden><span id="artistText"></span></div>
     <div id="lyrics" class="part" data-part="lyrics">
       <div id="now" class="line shadowed"></div>
       <div id="next" class="line shadowed"></div>
@@ -204,7 +218,7 @@
   let group = { x: 0, y: 0, w: 800, h: 170 };   // automatic layout's spot, window px
   let layout = null;          // { part: {x, y, w, h, rot, align} } in fractions of the screen
   let editing = false;
-  let songTitle = '';
+  let songName = '', songArtist = '';
   let coverRGB = null;        // [r, g, b] of the album cover, when known
   const invoke = (cmd, args) => window.__TAURI_INTERNALS__?.invoke(cmd, args);
 
@@ -212,8 +226,10 @@
   // even with nothing to fill them, so they can be placed).
   const PARTS = {
     cover: { el: $('cover'), label: 'Cover art', on: () => opts.showCover && (editing || !!$('coverImg').getAttribute('src')) },
-    title: { el: $('meta'), label: 'Title', text: true, on: () => opts.showTitle && (editing || !!songTitle) },
-    lyrics: { el: $('lyrics'), label: 'Lyrics', text: true, on: () => true },
+    title: { el: $('meta'), label: 'Title', text: true, on: () => opts.showTitle && (editing || !!songName) },
+    artist: { el: $('artist'), label: 'Artist', text: true, on: () => opts.showArtist && (editing || !!songArtist) },
+    // The lyrics part holds the current line and the next; each has its own switch.
+    lyrics: { el: $('lyrics'), label: 'Lyrics', text: true, on: () => opts.showLyrics !== false || opts.showNext },
     progress: { el: $('progress'), label: 'Progress', flips: 'Fill from the other end', on: () => opts.showProgress },
     visualizer: { el: $('vizBox'), label: 'Visualizer', flips: 'Bars grow from the other side', on: () => opts.showVisualizer },
   };
@@ -234,6 +250,7 @@
       next.textContent = b;
       now.classList.toggle('dim', !!dim);
       now.classList.remove('fade');
+      if (layout) fitText();
     }, 120);
   }
 
@@ -283,10 +300,10 @@
     return [255, 255, 255];
   }
   function applyColors() {
-    const c = { lyrics: 'white', next: 'white', title: 'white', progress: 'white', ...(opts.colors || {}) };
+    const c = { lyrics: 'white', next: 'white', title: 'white', artist: 'white', progress: 'white', ...(opts.colors || {}) };
     const st = document.body.style;
-    for (const k of ['lyrics', 'next', 'title', 'progress']) st.setProperty('--c-' + k, `rgb(${rgbOf(c[k], 0.72).join(',')})`);
-    const o = { cover: 1, title: 1, lyrics: 1, next: 1, progress: 1, ...(opts.opacity || {}) };
+    for (const k of ['lyrics', 'next', 'title', 'artist', 'progress']) st.setProperty('--c-' + k, `rgb(${rgbOf(c[k], 0.72).join(',')})`);
+    const o = { cover: 1, title: 1, artist: 1, lyrics: 1, next: 1, progress: 1, ...(opts.opacity || {}) };
     for (const k of Object.keys(o)) st.setProperty('--o-' + k, String(Math.min(1, Math.max(0.05, Number(o[k]) || 1))));
   }
   // Average colour of the cover, measured from the image when the server
@@ -313,8 +330,10 @@
   // ---- layout ---------------------------------------------------------------------
   function visibility() {
     for (const p of Object.values(PARTS)) p.el.hidden = !p.on();
+    $('now').hidden = opts.showLyrics === false;
     $('next').hidden = !opts.showNext;
-    $('metaText').textContent = songTitle || (editing ? 'Song title · Artist' : '');
+    $('metaText').textContent = songName || (editing ? 'Song title' : '');
+    $('artistText').textContent = songArtist || (editing ? 'Artist' : '');
   }
 
   // Where a part goes when there's no layout yet, or it's turned on later:
@@ -324,14 +343,21 @@
   function template() {
     const W = innerWidth, H = innerHeight, G = group;
     const right = opts.align === 'right';
-    const cover = PARTS.cover.on(), title = PARTS.title.on();
+    const cover = PARTS.cover.on(), title = PARTS.title.on(), artist = PARTS.artist.on();
     const coverH = 0.8, coverW = Math.min(0.3, (coverH * G.h) / G.w);
     const tx = cover ? 0.02 + coverW + 0.02 : 0.04, tw = 0.96 - tx;
     const align = cover ? (right ? 'right' : 'left') : (opts.align || 'center');
+    // Title, then artist, then the lyrics in what's left above the progress bar.
+    let top = 0.06;
+    const titleBox = { x: tx, y: top, w: tw, h: 0.13, align };
+    if (title) top += 0.14;
+    const artistBox = { x: tx, y: top, w: tw, h: 0.1, align };
+    if (artist) top += 0.11;
     const inGroup = {
       cover: { x: 0.02, y: 0.1, w: coverW, h: coverH },
-      title: { x: tx, y: 0.06, w: tw, h: 0.16, align },
-      lyrics: { x: tx, y: title ? 0.24 : 0.1, w: tw, h: title ? 0.5 : 0.64, align },
+      title: titleBox,
+      artist: artistBox,
+      lyrics: { x: tx, y: top + 0.02, w: tw, h: 0.76 - top, align },
       progress: { x: tx, y: 0.8, w: tw * 0.6, h: 0.08 },
       visualizer: { x: 0, y: 0.55, w: 1, h: 0.45 },
     };
@@ -362,7 +388,7 @@
       if (!layout) {
         s.left = s.top = s.width = s.height = s.transform = '';
         delete p.el.dataset.align;
-        p.el.classList.remove('flipped');
+        p.el.classList.remove('flipped', 'wrap', 'nowrap');
         continue;
       }
       const b = boxFor(name);
@@ -377,10 +403,17 @@
       p.el.classList.toggle('flipped', !!b.flip);
       p.el.querySelector('.flipper')?.setAttribute('aria-pressed', String(!!b.flip));
       p.el.classList.toggle('knob-below', (b.y + b.h / 2) * innerHeight - extents(b).hy < 64);
-      if (p.text) p.el.dataset.align = b.align || opts.align || 'center';
+      if (p.text) {
+        p.el.dataset.align = b.align || opts.align || 'center';
+        p.el.classList.toggle('wrap', !b.nowrap);
+        p.el.classList.toggle('nowrap', !!b.nowrap);
+        p.el.querySelector('[data-wrap]')?.setAttribute('aria-pressed', String(!b.nowrap));
+        const size = p.el.querySelector('[data-size="0"]');
+        if (size) size.textContent = Math.round((b.size || 1) * 100) + '%';
+      }
     }
     fitText();
-    for (const b of document.querySelectorAll('.aligns button')) {
+    for (const b of document.querySelectorAll('.aligns button[data-align]')) {
       const part = b.closest('.part').dataset.part;
       b.setAttribute('aria-pressed', String((layout?.[part]?.align || opts.align || 'center') === b.dataset.align));
     }
@@ -388,16 +421,47 @@
     reportHits();
   }
 
-  // Text is sized from its box (hand-placed) or the spot's height.
+  // Text is sized from its box (hand-placed, times the part's own size) or
+  // the spot's height.
   function fitText() {
     const st = document.body.style;
-    const lh = layout ? $('lyrics').clientHeight : group.h;
-    const nowPx = layout
-      ? Math.max(12, Math.min(140, lh * (opts.showNext ? 0.3 : 0.41)))
-      : Math.max(18, Math.min(38, group.h * 0.22));
-    st.setProperty('--now', nowPx + 'px');
-    st.setProperty('--next', Math.max(10, nowPx * 0.58) + 'px');
-    st.setProperty('--meta', (layout ? Math.max(9, Math.min(40, $('meta').clientHeight * 0.62)) : Math.max(11, Math.min(15, group.h * 0.08))) + 'px');
+    const L = $('lyrics').style, M = $('meta').style, A = $('artist').style;
+    if (!layout) {
+      for (const el of [L, M, A]) for (const v of ['--now', '--next', '--meta', '--artist']) el.removeProperty(v);
+      const nowPx = Math.max(18, Math.min(38, group.h * 0.22));
+      st.setProperty('--now', nowPx + 'px');
+      st.setProperty('--next', Math.max(10, nowPx * 0.58) + 'px');
+      st.setProperty('--meta', Math.max(11, Math.min(15, group.h * 0.08)) + 'px');
+      st.setProperty('--artist', Math.max(10, Math.min(13, group.h * 0.07)) + 'px');
+      return;
+    }
+    const size = (part) => layout?.[part]?.size || 1;
+    const clampPx = (px) => Math.max(8, Math.min(220, px));
+    // The largest size (up to `max`) at which `content` fits the box's
+    // height; text on one line just uses `max`. Then the part's own size.
+    const fitted = (part, box, content, max, apply) => {
+      if (layout?.[part]?.nowrap) { apply(clampPx(max * size(part))); return; }
+      let lo = 6, hi = Math.max(6, max);
+      apply(hi);
+      if (content() > box.clientHeight + 1) {
+        for (let i = 0; i < 8; i++) {
+          const mid = (lo + hi) / 2;
+          apply(mid);
+          if (content() > box.clientHeight + 1) hi = mid; else lo = mid;
+        }
+        hi = lo;
+      }
+      apply(clampPx(hi * size(part)));
+    };
+    const lyrics = $('lyrics');
+    const lyricHeight = () => [...lyrics.children].filter((c) => c.classList.contains('line') && !c.hidden)
+      .reduce((h, c) => h + c.offsetHeight + (c.id === 'next' ? 6 : 0), 0);
+    fitted('lyrics', lyrics, lyricHeight, lyrics.clientHeight * (opts.showNext ? 0.3 : 0.41), (px) => {
+      L.setProperty('--now', px + 'px');
+      L.setProperty('--next', Math.max(8, px * 0.58) + 'px');
+    });
+    fitted('title', $('meta'), () => $('metaText').offsetHeight, $('meta').clientHeight * 0.6, (px) => M.setProperty('--meta', px + 'px'));
+    fitted('artist', $('artist'), () => $('artistText').offsetHeight, $('artist').clientHeight * 0.6, (px) => A.setProperty('--artist', px + 'px'));
   }
 
   // Bounding box of what's showing, window px.
@@ -458,7 +522,11 @@
     if (p.text) {
       const icons = { left: 'M1 2h10M1 5h6M1 8h8', center: 'M1 2h10M3 5h6M2 8h8', right: 'M1 2h10M5 5h6M3 8h8' };
       p.el.insertAdjacentHTML('beforeend', '<span class="aligns">' + ['left', 'center', 'right'].map((a) =>
-        `<button data-align="${a}" title="Align ${a}"><svg viewBox="0 0 12 10"><path d="${icons[a]}"/></svg></button>`).join('') + '</span>');
+        `<button data-align="${a}" title="Align ${a}"><svg viewBox="0 0 12 10"><path d="${icons[a]}"/></svg></button>`).join('') +
+        '<span class="sep"></span><button class="tb" data-size="-1" title="Smaller text">A−</button>' +
+        '<button class="tb" data-size="0" title="Text size (click for 100%)">100%</button>' +
+        '<button class="tb" data-size="1" title="Bigger text">A+</button>' +
+        '<span class="sep"></span><button class="tb" data-wrap title="Wrap onto the next line" aria-pressed="true">Wrap</button></span>');
     }
   }
 
@@ -518,12 +586,21 @@
   let drag = null;
   document.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
-    const alignBtn = e.target.closest('.aligns button');
-    if (editing && alignBtn) {
-      const part = alignBtn.closest('.part').dataset.part;
-      layout[part] = { ...boxFor(part), align: alignBtn.dataset.align };
+    const tool = e.target.closest('.aligns button');
+    if (editing && tool) {
+      const part = tool.closest('.part').dataset.part;
+      const b = boxFor(part);
+      if (tool.dataset.align) b.align = tool.dataset.align;
+      else if (tool.hasAttribute('data-wrap')) b.nowrap = !b.nowrap;
+      else if (tool.dataset.size === '0') b.size = 1;
+      else if (tool.dataset.size) {
+        // 10% steps, from 30% to 400%.
+        b.size = Math.round(Math.min(4, Math.max(0.3, (b.size || 1) * (tool.dataset.size === '1' ? 1.1 : 1 / 1.1))) * 100) / 100;
+      }
+      layout[part] = b;
       applyLayout();
       save(false);
+      e.preventDefault();
       return;
     }
     const flipBtn = e.target.closest('.flipper');
@@ -762,7 +839,8 @@
       if (editing && (!wasEditing || !layout)) startEditing();
     },
     song(s) {
-      songTitle = [s.title, s.artist].filter(Boolean).join(' · ');
+      songName = s.title || '';
+      songArtist = s.artist || '';
       const img = $('coverImg');
       if (s.cover) img.src = s.cover; else img.removeAttribute('src');
       coverRGB = /^#[0-9a-f]{6}$/i.test(s.color || '') ? hexRGB(s.color) : null;

@@ -65,6 +65,13 @@ pub struct LayoutBox {
     /// from the other end.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub flip: bool,
+    /// Text size, as a multiple of what fits the box (lyrics, title, artist).
+    #[serde(default = "one", skip_serializing_if = "is_one")]
+    pub size: f64,
+    /// Text stays on one line, cut short with "…" (lyrics, title, artist).
+    /// Off by default: long text carries on onto the next line.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub nowrap: bool,
     /// Text alignment for the lyrics and title: "left", "center", "right".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub align: Option<String>,
@@ -126,18 +133,19 @@ pub struct PartColors {
     pub lyrics: String,
     pub next: String,
     pub title: String,
+    pub artist: String,
     pub progress: String,
 }
 
 impl Default for PartColors {
     fn default() -> Self {
-        Self { lyrics: "white".into(), next: "white".into(), title: "white".into(), progress: "white".into() }
+        Self { lyrics: "white".into(), next: "white".into(), title: "white".into(), artist: "white".into(), progress: "white".into() }
     }
 }
 
 impl PartColors {
     pub fn clean(mut self) -> Self {
-        for c in [&mut self.lyrics, &mut self.next, &mut self.title, &mut self.progress] {
+        for c in [&mut self.lyrics, &mut self.next, &mut self.title, &mut self.artist, &mut self.progress] {
             if !valid_color(c, false) {
                 *c = "white".into();
             }
@@ -153,6 +161,7 @@ impl PartColors {
 pub struct PartOpacity {
     pub cover: f64,
     pub title: f64,
+    pub artist: f64,
     pub lyrics: f64,
     pub next: f64,
     pub progress: f64,
@@ -160,18 +169,26 @@ pub struct PartOpacity {
 
 impl Default for PartOpacity {
     fn default() -> Self {
-        Self { cover: 1.0, title: 1.0, lyrics: 1.0, next: 1.0, progress: 1.0 }
+        Self { cover: 1.0, title: 1.0, artist: 1.0, lyrics: 1.0, next: 1.0, progress: 1.0 }
     }
 }
 
 impl PartOpacity {
     /// 5% to 100%; anything else back to solid.
     pub fn clean(mut self) -> Self {
-        for v in [&mut self.cover, &mut self.title, &mut self.lyrics, &mut self.next, &mut self.progress] {
+        for v in [&mut self.cover, &mut self.title, &mut self.artist, &mut self.lyrics, &mut self.next, &mut self.progress] {
             *v = if v.is_finite() { v.clamp(0.05, 1.0) } else { 1.0 };
         }
         self
     }
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+fn is_one(v: &f64) -> bool {
+    *v == 1.0
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -187,6 +204,12 @@ pub struct OverlaySettings {
     pub click_through: bool,
     pub show_cover: bool,
     pub show_title: bool,
+    /// The artist, as its own part. Settings from before it was split from
+    /// the title have none; it then follows `show_title`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_artist: Option<bool>,
+    /// The current lyric line (the next line has its own switch).
+    pub show_lyrics: bool,
     pub show_next: bool,
     pub show_progress: bool,
     pub show_visualizer: bool,
@@ -205,6 +228,11 @@ pub struct OverlaySettings {
     /// those settings have no such field, so it reads as false for them.
     #[serde(default)]
     pub screen_layout: bool,
+    /// The layout is in fractions of the whole screen. Before the overlay
+    /// covered the taskbar's strip too, it was fractions of the work area;
+    /// those settings have no such field, so it reads as false for them.
+    #[serde(default)]
+    pub monitor_layout: bool,
     pub viz: VizSettings,
     pub colors: PartColors,
     pub opacity: PartOpacity,
@@ -216,6 +244,8 @@ impl Default for OverlaySettings {
             click_through: true,
             show_cover: false,
             show_title: false,
+            show_artist: None,
+            show_lyrics: true,
             show_next: true,
             show_progress: false,
             show_visualizer: false,
@@ -224,6 +254,7 @@ impl Default for OverlaySettings {
             rect: None,
             layout: None,
             screen_layout: true,
+            monitor_layout: true,
             viz: VizSettings::default(),
             colors: PartColors::default(),
             opacity: PartOpacity::default(),
