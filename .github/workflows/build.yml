@@ -52,6 +52,21 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      # The release notes are the version tag's message (scripts/release.mjs).
+      - name: Release notes
+        id: notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          body="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")"
+          if [ -z "${body//[[:space:]]/}" ]; then body="See the commits for what's new."; fi
+          {
+            echo 'body<<OXIDE_NOTES_END'
+            echo "$body"
+            echo 'OXIDE_NOTES_END'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build (and release on tags)
         uses: tauri-apps/tauri-action@v0
         env:
@@ -63,7 +78,7 @@ jobs:
           args: ${{ matrix.args }}
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && 'Oxide __VERSION__' || '' }}
-          releaseBody: "See the commits for what's new."
+          releaseBody: ${{ steps.notes.outputs.body }}
           # Published (not draft) so /releases/latest/download/latest.json
           # points at it and installed apps see the update right away.
           releaseDraft: false

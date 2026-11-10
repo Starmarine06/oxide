@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "A YouTube Music desktop client with plugins, written in Rust"
 license = "MIT"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.82"
 
 [lib]
 name = "oxide_lib"

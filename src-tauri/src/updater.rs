@@ -79,8 +79,11 @@ pub async fn check(app: &AppHandle, manual: bool) {
         "Oxide {} is available. You have {}.\n\nUpdate now? Oxide will restart when it's done.",
         update.version, update.current_version
     );
-    if let Some(notes) = update.body.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
-        let notes: String = notes.chars().take(600).collect();
+    if let Some(notes) = update.body.as_deref().map(plain_text).filter(|n| !n.is_empty()) {
+        let mut notes: String = notes.chars().take(600).collect();
+        if notes.len() < plain_text(update.body.as_deref().unwrap_or_default()).len() {
+            notes.push('…');
+        }
         message.push_str(&format!("\n\nWhat's new:\n{notes}"));
     }
 
@@ -131,4 +134,39 @@ pub async fn check(app: &AppHandle, manual: bool) {
                 }
             });
         });
+}
+
+/// Release notes are Markdown; the update prompt is plain text. Drops
+/// heading marks, bold/italic marks and backticks, and turns list bullets
+/// into "•".
+fn plain_text(markdown: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for line in markdown.lines() {
+        let line = line.trim_end();
+        let trimmed = line.trim_start();
+        let indent = &line[..line.len() - trimmed.len()];
+        let body = if let Some(rest) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+            format!("{indent}• {rest}")
+        } else {
+            trimmed.trim_start_matches('#').trim_start().to_string()
+        };
+        let body = body.replace("**", "").replace("__", "").replace('`', "");
+        // No more than one blank line in a row.
+        if body.is_empty() && out.last().is_none_or(|l| l.is_empty()) {
+            continue;
+        }
+        out.push(body);
+    }
+    out.join("\n").trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plain_text;
+
+    #[test]
+    fn notes_become_plain_text() {
+        let md = "Intro line.\n\n## Downloads\n\n- **Bold** item with `code`\n- Second\n\n\n## Fixes\n* One";
+        assert_eq!(plain_text(md), "Intro line.\n\nDownloads\n\n• Bold item with code\n• Second\n\nFixes\n• One");
+    }
 }
