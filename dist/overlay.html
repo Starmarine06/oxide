@@ -90,6 +90,10 @@
   body.custom .card { inset: 0; display: block; padding: 0; border-radius: 0; }
   body.custom .text { display: contents; }
   body.custom .part { position: absolute; box-sizing: border-box; margin: 0; max-width: none; z-index: 2; transform-origin: 50% 50%; }
+  /* The text parts' own rules (by id) set position and margins for the
+     automatic layout; without these they'd stay in the flow and each
+     would be pushed down by the ones before it. */
+  body.custom #meta, body.custom #artist, body.custom #lyrics { position: absolute; margin: 0; }
   body.custom .viz { z-index: 1; }
   body.custom .cover { align-self: auto; aspect-ratio: auto; }
   body.custom #lyrics { justify-content: center; }
@@ -100,6 +104,10 @@
   body.custom .part.wrap #metaText, body.custom .part.wrap #artistText { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
   body.custom #lyrics.wrap .line { display: block; -webkit-line-clamp: unset; overflow: visible; overflow-wrap: anywhere; }
   body.custom #lyrics.nowrap .line { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Pushed against the top or bottom of the screen: the text hugs that edge
+     instead of sitting in the middle of its box. */
+  body.custom #lyrics.edge-top, body.custom #meta.edge-top, body.custom #artist.edge-top { justify-content: flex-start; }
+  body.custom #lyrics.edge-bottom, body.custom #meta.edge-bottom, body.custom #artist.edge-bottom { justify-content: flex-end; }
   body.custom .progress { width: auto; }
   body.custom #lyrics[data-align="left"], body.custom #meta[data-align="left"], body.custom #artist[data-align="left"] { text-align: left; align-items: flex-start; }
   body.custom #lyrics[data-align="center"], body.custom #meta[data-align="center"], body.custom #artist[data-align="center"] { text-align: center; align-items: center; }
@@ -388,7 +396,7 @@
       if (!layout) {
         s.left = s.top = s.width = s.height = s.transform = '';
         delete p.el.dataset.align;
-        p.el.classList.remove('flipped', 'wrap', 'nowrap');
+        p.el.classList.remove('flipped', 'wrap', 'nowrap', 'edge-top', 'edge-bottom');
         continue;
       }
       const b = boxFor(name);
@@ -404,6 +412,10 @@
       p.el.querySelector('.flipper')?.setAttribute('aria-pressed', String(!!b.flip));
       p.el.classList.toggle('knob-below', (b.y + b.h / 2) * innerHeight - extents(b).hy < 64);
       if (p.text) {
+        // Only when upright: a turned part's "top" isn't the screen's.
+        const upright = !b.rot;
+        p.el.classList.toggle('edge-top', upright && b.y * innerHeight <= 2);
+        p.el.classList.toggle('edge-bottom', upright && (b.y + b.h) * innerHeight >= innerHeight - 2);
         p.el.dataset.align = b.align || opts.align || 'center';
         p.el.classList.toggle('wrap', !b.nowrap);
         p.el.classList.toggle('nowrap', !!b.nowrap);
