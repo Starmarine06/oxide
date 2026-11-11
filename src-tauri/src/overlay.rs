@@ -300,17 +300,67 @@ fn update_passing(app: &AppHandle) {
     }
 }
 
-/// Follow the cursor while the overlay is open and its parts take clicks.
+/// Follow the cursor while the overlay is open and its parts take clicks,
+/// and keep the overlay above other windows.
 fn watch_cursor(app: AppHandle) {
     std::thread::spawn(move || {
+        let mut last_front = 0isize;
+        let mut ticks = 0u32;
         while is_open() && window(&app).is_some() {
             if !CLICK_THROUGH.load(Ordering::SeqCst) || is_editing() {
                 update_passing(&app);
+            }
+            // Another window coming to the front can push the overlay under
+            // ordinary windows even though it's still marked topmost (it
+            // never takes focus, so Windows doesn't keep it up there).
+            // Raise it again when the front window changes, and every
+            // second for anything that slips past that.
+            let front = front_window();
+            ticks += 1;
+            if front != last_front || ticks >= 20 {
+                last_front = front;
+                ticks = 0;
+                raise(&app);
             }
             std::thread::sleep(Duration::from_millis(50));
         }
     });
 }
+
+#[cfg(windows)]
+fn front_window() -> isize {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow().0 as isize }
+}
+
+#[cfg(not(windows))]
+fn front_window() -> isize {
+    0
+}
+
+/// Put the overlay back at the top of the topmost windows without
+/// activating, moving or resizing it.
+#[cfg(windows)]
+fn raise(app: &AppHandle) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+    let Some(h) = window(app).and_then(|w| w.hwnd().ok()) else { return };
+    unsafe {
+        let _ = SetWindowPos(
+            HWND(h.0),
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn raise(_app: &AppHandle) {}
 
 // ---- placement ------------------------------------------------------------------
 
