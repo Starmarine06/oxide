@@ -1,6 +1,6 @@
 [package]
 name = "oxide"
-version = "1.3.2"
+version = "1.3.3"
 description = "A YouTube Music desktop client with plugins, written in Rust"
 license = "MIT"
 edition = "2021"
