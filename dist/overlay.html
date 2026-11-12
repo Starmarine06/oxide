@@ -12,6 +12,14 @@
     --c-lyrics: #fff; --c-next: #fff; --c-title: #fff; --c-artist: #fff; --c-progress: #fff;
     --o-cover: 1; --o-title: 1; --o-artist: 1; --o-lyrics: 1; --o-next: 1; --o-progress: 1;
   }
+  /* Registered as colours so a colour change (a new cover, a new setting)
+     fades over instead of jumping. */
+  @property --c-lyrics { syntax: '<color>'; inherits: true; initial-value: #fff; }
+  @property --c-next { syntax: '<color>'; inherits: true; initial-value: #fff; }
+  @property --c-title { syntax: '<color>'; inherits: true; initial-value: #fff; }
+  @property --c-artist { syntax: '<color>'; inherits: true; initial-value: #fff; }
+  @property --c-progress { syntax: '<color>'; inherits: true; initial-value: #fff; }
+  body { transition: --c-lyrics .6s ease, --c-next .6s ease, --c-title .6s ease, --c-artist .6s ease, --c-progress .6s ease; }
   /* See-through: on each part's content only, so in edit mode its label,
      handles and buttons stay solid. */
   .cover img { opacity: var(--o-cover); }
@@ -314,9 +322,13 @@
     const o = { cover: 1, title: 1, artist: 1, lyrics: 1, next: 1, progress: 1, ...(opts.opacity || {}) };
     for (const k of Object.keys(o)) st.setProperty('--o-' + k, String(Math.min(1, Math.max(0.05, Number(o[k]) || 1))));
   }
+  // Measured colours by cover URL, so re-sent song info never re-measures.
+  const coverColors = new Map();
+  let coverURL = '';
   // Average colour of the cover, measured from the image when the server
   // allows it (downloaded songs bring theirs along).
   function measureCover(url) {
+    if (coverColors.has(url)) { coverRGB = coverColors.get(url); applyColors(); return; }
     const probe = new Image();
     probe.crossOrigin = 'anonymous';
     probe.onload = () => {
@@ -328,8 +340,10 @@
         const d = x.getImageData(0, 0, 8, 8).data;
         let r = 0, g = 0, b = 0;
         for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
-        coverRGB = [r, g, b].map((v) => Math.round(v / 64));
-        applyColors();
+        const rgb = [r, g, b].map((v) => Math.round(v / 64));
+        coverColors.set(url, rgb);
+        // A newer cover may have arrived while this one loaded.
+        if (url === coverURL) { coverRGB = rgb; applyColors(); }
       } catch (_) { /* the server didn't allow reading it */ }
     };
     probe.src = url;
@@ -731,9 +745,21 @@
     return out;
   }
 
+  // The visualizer's colour eases toward its target, like the text's.
+  let vizRGB = null, vizAt = 0;
+  function easeVizColor(v) {
+    const now = performance.now(), dt = Math.min(0.1, (now - vizAt) / 1000);
+    vizAt = now;
+    if (v.color === 'rainbow') { vizRGB = null; return; }
+    const goal = rgbOf(v.color, 0.6);
+    if (!vizRGB) { vizRGB = goal.slice(); return; }
+    const k = 1 - Math.exp(-dt * 7);   // about 0.6s to settle
+    vizRGB = vizRGB.map((c, j) => c + (goal[j] - c) * k);
+  }
+
   function colorFor(v, i, n, alpha) {
     if (v.color === 'rainbow') return `hsla(${Math.round((i / n) * 300)}, 85%, 62%, ${alpha})`;
-    const [r, gg, b] = rgbOf(v.color, 0.6);
+    const [r, gg, b] = (vizRGB || rgbOf(v.color, 0.6)).map(Math.round);
     return `rgba(${r},${gg},${b},${alpha})`;
   }
 
@@ -746,6 +772,7 @@
     }
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
+    easeVizColor(v);
     const n = Math.max(8, Math.min(96, v.bars | 0));
     const stale = performance.now() - lastLevels > 400;
     const levels = resample(n);
@@ -855,8 +882,13 @@
       songArtist = s.artist || '';
       const img = $('coverImg');
       if (s.cover) img.src = s.cover; else img.removeAttribute('src');
-      coverRGB = /^#[0-9a-f]{6}$/i.test(s.color || '') ? hexRGB(s.color) : null;
-      if (!coverRGB && s.cover) measureCover(s.cover);
+      // Keep the last cover colour until the new one is known: dropping it
+      // painted every "Cover"-coloured part white for a moment each time
+      // the song info was re-sent.
+      if (/^#[0-9a-f]{6}$/i.test(s.color || '')) coverRGB = hexRGB(s.color);
+      else if (!s.cover) coverRGB = null;
+      else if (s.cover !== coverURL || !coverRGB) { coverURL = s.cover; measureCover(s.cover); }
+      if (s.cover) coverURL = s.cover;
       applyColors();
       refresh();
     },
